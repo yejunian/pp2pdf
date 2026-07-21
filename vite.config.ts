@@ -1,9 +1,13 @@
 import tailwindcss from "@tailwindcss/vite";
-import adapter from "@sveltejs/adapter-auto";
+import adapter from "@sveltejs/adapter-static";
 import { sveltekit } from "@sveltejs/kit/vite";
 import { defineConfig } from "vite";
 
-export default defineConfig({
+// GitHub Pages project site is served from https://<user>.github.io/<repo>/,
+// so the app needs to know its base path in production builds.
+const base = "/pp2pdf";
+
+export default defineConfig(({ command }) => ({
   plugins: [
     tailwindcss(),
     sveltekit({
@@ -13,10 +17,14 @@ export default defineConfig({
           filename.split(/[/\\]/).includes("node_modules") ? undefined : true,
       },
 
-      // adapter-auto only supports some environments, see https://svelte.dev/docs/kit/adapter-auto for a list.
-      // If your environment is not supported, or you settled on a specific environment, switch out the adapter.
-      // See https://svelte.dev/docs/kit/adapters for more information about adapters.
-      adapter: adapter(),
+      // Fully static output for GitHub Pages. `fallback` makes GitHub Pages serve
+      // the SPA shell for any path that was not prerendered.
+      // See https://svelte.dev/docs/kit/adapter-static
+      adapter: adapter({ fallback: "404.html" }),
+
+      paths: {
+        base: command === "build" ? base : "",
+      },
     }),
   ],
-});
+}));
