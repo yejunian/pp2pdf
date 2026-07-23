@@ -4,6 +4,7 @@
     getFocusedPlaylist,
     getPlaylistById,
     getPlaylistSlideThumbUrl,
+    getPresentationByUuid,
   } from "$lib/utils/pp-requests";
 
   const focusedPlaylistURL = "http://localhost:50001/v1/playlist/focused";
@@ -25,26 +26,28 @@
     playlistState = playlist; // XXX
 
     for (const item of playlist.items) {
+      // TODO: 재생목록 루프 돌면서 부가정보(프레젠테이션별 길이 등)를
+      // 기록해야 할 수도 있음.
+
       if (item.type !== "presentation") {
+        // TODO: 헤더, 연결하지 않은 플레이스홀더 처리
         continue;
       }
 
+      const presentationUuid = item.presentation_info.presentation_uuid;
+      const arrangementUuid = item.presentation_info.arrangement_uuid;
       const index = item.id.index;
 
-      // TODO: 크기 1짜리 섬네일 요청 시도 없이, 개별 프레젠테이션의
-      // 해당 정렬의 길이 기반으로 루프 횟수를 제한하기.
-      try {
-        let cueIndex = 0;
+      const { presentation } = await getPresentationByUuid(presentationUuid);
 
-        while (cueIndex >= 0) {
-          // TODO: 섬네일 획득 즉시 PDF 처리. (순서 주의)
-          thumbs.push(
-            await getPlaylistSlideThumbUrl(playlistId, index, cueIndex, 1920),
-          );
-          cueIndex += 1;
-        }
-      } catch (error) {
-        // EOF
+      const total_cues = arrangementUuid
+        ? (presentation.arrangements.find(
+            (arrangement) => arrangement.id.uuid === arrangementUuid,
+          )?.total_cues ?? 0)
+        : presentation.total_cues;
+
+      for (let c = 0; c < total_cues; c += 1) {
+        thumbs.push(await getPlaylistSlideThumbUrl(playlistId, index, c, 192));
       }
     }
   }

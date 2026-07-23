@@ -1,3 +1,5 @@
+// TODO: ProPresenter 관련 타입 이름은 P로 시작하도록 변경.
+
 export type Playlist = {
   id: ObjectId;
   items: PlaylistItem[];
@@ -48,4 +50,48 @@ type PlaylistPresentation = PlaylistItemBase & {
     arrangement_uuid: string; // 마스터 정렬이면 ""
   };
   destination: "presentation" | "announcements";
+};
+
+type PColor = {
+  red: number;
+  green: number;
+  blue: number;
+  alpha: number;
+};
+
+type PGroup = {
+  name: string;
+  color: PColor;
+  slides: PSlide[];
+  uuid: string;
+};
+
+type PSlide = {
+  enabled: boolean;
+  notes: string;
+  text: string;
+  label: string;
+  size: {
+    width: number;
+    height: number;
+  };
+};
+
+type PArrangement = {
+  id: ObjectId;
+  groups: string[]; // PGroup의 uuid를 순서대로 나열
+  total_cues: number;
+};
+
+export type PPresentation = {
+  id: ObjectId;
+  groups: PGroup[];
+  has_timeline: boolean;
+  presentation_path: string;
+  destination: "presentation" | "announcements";
+  arrangements: PArrangement[];
+  current_arrangement: string; // 현재 선택된 정렬의 uuid
+  type: string; // idk
+  is_authorized: boolean;
+  total_cues: number; // 마스터 정렬의 슬라이드 개수
 };
