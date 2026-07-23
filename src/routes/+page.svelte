@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Playlist } from "$lib/types/pp-responses";
+  import type { PPlaylist } from "$lib/types/pp";
   import {
     getFocusedPlaylist,
     getPlaylistById,
@@ -9,7 +9,7 @@
 
   const focusedPlaylistURL = "http://localhost:50001/v1/playlist/focused";
 
-  let playlistState: Playlist | undefined = $state(); // XXX
+  let playlistState: PPlaylist | undefined = $state(); // XXX
   let thumbs: string[] = $state([]);
 
   async function handleButtonClick() {

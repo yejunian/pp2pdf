@@ -1,12 +1,8 @@
-import type {
-  FocusedPlaylist,
-  Playlist,
-  PPresentation,
-} from "$lib/types/pp-responses";
+import type { PFocusedPlaylist, PPlaylist, PPresentation } from "$lib/types/pp";
 
 // TODO: URL에서 host와 엔드포인트 분리.
 
-export async function getFocusedPlaylist(): Promise<FocusedPlaylist> {
+export async function getFocusedPlaylist(): Promise<PFocusedPlaylist> {
   const response = await fetch("http://localhost:50001/v1/playlist/focused");
 
   await throwIfNotOk(response);
@@ -32,7 +28,7 @@ export async function getPlaylistSlideThumbUrl(
   ].join("");
 }
 
-export async function getPlaylistById(id: string): Promise<Playlist> {
+export async function getPlaylistById(id: string): Promise<PPlaylist> {
   const response = await fetch(`http://localhost:50001/v1/playlist/${id}`);
 
   await throwIfNotOk(response);
