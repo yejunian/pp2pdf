@@ -6,11 +6,22 @@
     getPlaylistSlideThumbUrl,
     getPresentationByUuid,
   } from "$lib/utils/pp-requests";
+  import { saveImagesAsPdf } from "$lib/utils/pdf";
 
   const focusedPlaylistURL = "http://localhost:50001/v1/playlist/focused";
 
   let playlistState: PPlaylist | undefined = $state(); // XXX
   let thumbs: string[] = $state([]);
+  let isSavingPdf = $state(false); // XXX
+
+  async function handleSavePdfClick() {
+    isSavingPdf = true; // XXX
+    try {
+      await saveImagesAsPdf(thumbs, { width: 960, height: 540 });
+    } finally {
+      isSavingPdf = false; // XXX
+    }
+  }
 
   async function handleButtonClick() {
     const focusedPlaylist = await getFocusedPlaylist();
@@ -47,23 +58,26 @@
         : presentation.total_cues;
 
       for (let c = 0; c < total_cues; c += 1) {
-        thumbs.push(await getPlaylistSlideThumbUrl(playlistId, index, c, 192));
+        thumbs.push(await getPlaylistSlideThumbUrl(playlistId, index, c, 960));
       }
     }
   }
 </script>
 
-<h1>pp2pdf</h1>
+<h1 class="text-2xl font-bold">pp2pdf <small>(alpha)</small></h1>
 
 <div>
-  <button type="button" onclick={handleButtonClick}>
-    Fetch Current Playlist
-    <br />
-    {focusedPlaylistURL}
+  <button
+    type="button"
+    onclick={handleButtonClick}
+    class="cursor-pointer rounded bg-sky-500 text-white"
+  >
+    현재 재생목록 가져오기
   </button>
 </div>
 
 {#if playlistState}
+  <hr />
   <h2>{playlistState.id.name} <code>{playlistState.id.uuid}</code></h2>
   <ol>
     {#each playlistState.items as item, index (item.id.uuid)}
@@ -73,10 +87,16 @@
 {/if}
 
 {#if thumbs.length > 0}
+  <hr />
   <div>{thumbs.length}개 이미지</div>
-  <div class="flex flex-wrap gap-x-2 gap-y-6">
-    {#each thumbs as src, index (src)}
-      <img {src} alt="{index + 1}번째" />
-    {/each}
+  <div>
+    <button
+      type="button"
+      onclick={handleSavePdfClick}
+      disabled={isSavingPdf}
+      class="cursor-pointer rounded bg-sky-500 text-white"
+    >
+      {isSavingPdf ? "PDF 저장 중..." : "슬라이드 이미지를 PDF로 저장하기"}
+    </button>
   </div>
 {/if}
