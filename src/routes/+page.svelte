@@ -45,17 +45,15 @@
         continue;
       }
 
-      const presentationUuid = item.presentation_info.presentation_uuid;
-      const arrangementUuid = item.presentation_info.arrangement_uuid;
+      const { presentation_uuid, arrangement_uuid } = item.presentation_info;
       const index = item.id.index;
 
-      const { presentation } = await getPresentationByUuid(presentationUuid);
+      const { presentation } = await getPresentationByUuid(presentation_uuid);
 
-      const total_cues = arrangementUuid
-        ? (presentation.arrangements.find(
-            (arrangement) => arrangement.id.uuid === arrangementUuid,
-          )?.total_cues ?? 0)
-        : presentation.total_cues;
+      const total_cues =
+        presentation.arrangements.find(
+          (arrangement) => arrangement.id.uuid === arrangement_uuid,
+        )?.total_cues ?? presentation.total_cues;
 
       for (let c = 0; c < total_cues; c += 1) {
         thumbs.push(await getPlaylistSlideThumbUrl(playlistId, index, c, 960));
