@@ -7,8 +7,7 @@
     getPresentationByUuid,
   } from "$lib/utils/pp-requests";
   import { saveImagesAsPdf } from "$lib/utils/pdf";
-
-  const focusedPlaylistURL = "http://localhost:50001/v1/playlist/focused";
+  import { getArrangementLength } from "$lib/utils/pp";
 
   let playlistState: PPlaylist | undefined = $state(); // XXX
   let thumbs: string[] = $state([]);
@@ -49,11 +48,7 @@
       const index = item.id.index;
 
       const { presentation } = await getPresentationByUuid(presentation_uuid);
-
-      const total_cues =
-        presentation.arrangements.find(
-          (arrangement) => arrangement.id.uuid === arrangement_uuid,
-        )?.total_cues ?? presentation.total_cues;
+      const total_cues = getArrangementLength(presentation, arrangement_uuid);
 
       for (let c = 0; c < total_cues; c += 1) {
         thumbs.push(await getPlaylistSlideThumbUrl(playlistId, index, c, 960));
