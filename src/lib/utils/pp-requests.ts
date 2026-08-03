@@ -1,13 +1,16 @@
-import type { PFocusedPlaylist, PPlaylist, PPresentation } from "$lib/types/pp";
+import type {
+  PFocusedPlaylist,
+  PLibrary,
+  PObjectId,
+  PPlaylist,
+  PPlaylistAll,
+  PPresentation,
+} from "$lib/types/pp";
 
 // TODO: URL에서 host와 엔드포인트 분리.
 
 export async function getFocusedPlaylist(): Promise<PFocusedPlaylist> {
-  const response = await fetch("http://localhost:50001/v1/playlist/focused");
-
-  await throwIfNotOk(response);
-
-  return await response.json();
+  return await request("http://localhost:50001/v1/playlist/focused");
 }
 
 export async function getPlaylistSlideThumbUrl(
@@ -29,30 +32,35 @@ export async function getPlaylistSlideThumbUrl(
 }
 
 export async function getPlaylistById(id: string): Promise<PPlaylist> {
-  const response = await fetch(`http://localhost:50001/v1/playlist/${id}`);
-
-  await throwIfNotOk(response);
-
-  return await response.json();
+  return await request(`http://localhost:50001/v1/playlist/${id}`);
 }
 
 export async function getPresentationByUuid(
   uuid: string,
 ): Promise<{ presentation: PPresentation }> {
-  const response = await fetch(
-    `http://localhost:50001/v1/presentation/${uuid}`,
-  );
-
-  await throwIfNotOk(response);
-
-  return await response.json();
+  return await request(`http://localhost:50001/v1/presentation/${uuid}`);
 }
 
-async function throwIfNotOk(response: Response) {
-  if (!response.ok) {
-    const statusMessage = `${response.status} ${response.statusText}`;
-    const body = await response.text();
+export async function getPlaylistAll(): Promise<PPlaylistAll> {
+  return await request("http://localhost:50001/v1/playlists");
+}
 
-    throw new Error([statusMessage, body].join("\n"));
+export async function getLibraryAll(): Promise<PObjectId[]> {
+  return await request("http://localhost:50001/v1/libraries");
+}
+
+export async function getLibraryById(id: string): Promise<PLibrary> {
+  return await request(`http://localhost:50001/v1/library/${id}`);
+}
+
+export async function request(url: RequestInfo | URL) {
+  const response = await fetch(url);
+
+  if (response.ok) {
+    return await response.json();
+  } else {
+    throw new Error(
+      `${response.status} ${response.statusText}\n${await response.text()}`,
+    );
   }
 }

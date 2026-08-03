@@ -1,9 +1,23 @@
+export type PPlaylistAll = (PPlaylistGroupItem | PPlaylistGroup)[];
+
+type PPlaylistGroupItem = {
+  id: PObjectId;
+  field_type: "playlist";
+  children: [];
+};
+
+type PPlaylistGroup = {
+  id: PObjectId;
+  field_type: "group";
+  children: PPlaylistAll;
+};
+
 export type PPlaylist = {
   id: PObjectId;
   items: PPlaylistItem[];
 };
 
-type PObjectId = {
+export type PObjectId = {
   uuid: string;
   name: string;
   index: number;
@@ -93,4 +107,9 @@ export type PPresentation = {
   type: string; // idk
   is_authorized: boolean;
   total_cues: number; // 마스터 정렬의 슬라이드 개수
+};
+
+export type PLibrary = {
+  update_type: "all";
+  items: PObjectId[];
 };
