@@ -1,12 +1,12 @@
 export type PPlaylistAll = (PPlaylistGroupItem | PPlaylistGroup)[];
 
-type PPlaylistGroupItem = {
+export type PPlaylistGroupItem = {
   id: PObjectId;
   field_type: "playlist";
   children: [];
 };
 
-type PPlaylistGroup = {
+export type PPlaylistGroup = {
   id: PObjectId;
   field_type: "group";
   children: PPlaylistAll;

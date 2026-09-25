@@ -1,194 +1,285 @@
 <script lang="ts">
-  import type { PPlaylist, PPlaylistAll } from "$lib/types/pp";
+  import ConnectionCard from "$lib/components/ConnectionCard.svelte";
+  import PdfOptionsCard from "$lib/components/PdfOptionsCard.svelte";
+  import SourceCard from "$lib/components/SourceCard.svelte";
+  import type { PObjectId, PPlaylistAll } from "$lib/types/pp";
+  import type {
+    ConnectionStatus,
+    GenerationState,
+    SourceTab,
+  } from "$lib/types/ui";
+  import {
+    DEFAULT_PDF_OPTIONS,
+    saveImagesAsPdf,
+    type PdfOptions,
+  } from "$lib/utils/pdf";
+  import { collectSlideImageUrls, type PSelection } from "$lib/utils/pp";
   import {
     getFocusedPlaylist,
+    getFocusedPresentation,
+    getLibraryAll,
+    getLibraryById,
     getPlaylistAll,
-    getPlaylistById,
-    getPlaylistSlideThumbUrl,
-    getPresentationByUuid,
+    makeBaseUrl,
   } from "$lib/utils/pp-requests";
-  import { saveImagesAsPdf } from "$lib/utils/pdf";
-  import { getArrangementLength } from "$lib/utils/pp";
 
-  let playlistAll: PPlaylistAll = $state([]);
-  let playlistState: PPlaylist | undefined = $state(); // XXX
-  let thumbs: string[] = $state([]);
-  let isSavingPdf = $state(false); // XXX
-  let selected = $state("selected-playlist");
+  // 1. ProPresenter 연결
+  let host = $state("localhost");
+  let port = $state(50001);
+  let connectionStatus = $state<ConnectionStatus>("idle");
+  let baseUrl = $state("");
+  let connectionError = $state("");
 
-  async function handleSavePdfClick() {
-    isSavingPdf = true; // XXX
+  // 2. 재생목록·프레젠테이션 선택
+  let libraries: PObjectId[] = $state([]);
+  let playlists: PPlaylistAll = $state([]);
+  let selectedLibraryId = $state("");
+  let presentations: PObjectId[] = $state([]);
+  let presentationsLoading = $state(false);
+  let sourceTab = $state<SourceTab>("library");
+  let sourceBusy = $state(false);
+  let sourceError = $state("");
+  let selection = $state<PSelection | null>(null);
+
+  // 3. PDF 생성 옵션
+  let options: PdfOptions = $state({ ...DEFAULT_PDF_OPTIONS });
+  let generation = $state<GenerationState>({ phase: "idle", result: null });
+  let abortController: AbortController | null = null;
+
+  const connected = $derived(connectionStatus === "connected");
+
+  async function handleConnect() {
+    const url = makeBaseUrl(host, port);
+
+    baseUrl = url;
+    connectionStatus = "connecting";
+    connectionError = "";
+    sourceError = "";
+    libraries = [];
+    playlists = [];
+    selectedLibraryId = "";
+    presentations = [];
+    selection = null;
+
     try {
-      await saveImagesAsPdf(thumbs, { width: 960, height: 540 });
-    } finally {
-      isSavingPdf = false; // XXX
+      [libraries, playlists] = await Promise.all([
+        getLibraryAll(url),
+        getPlaylistAll(url),
+      ]);
+      connectionStatus = "connected";
+    } catch (error) {
+      connectionStatus = "failed";
+      connectionError = getErrorMessage(error);
     }
   }
 
-  async function handleReloadListClick() {
-    playlistAll = await getPlaylistAll();
+  async function loadPresentations(libraryId: string) {
+    presentationsLoading = true;
+    sourceError = "";
+
+    try {
+      const library = await getLibraryById(baseUrl, libraryId);
+      // 기다리는 동안 다른 라이브러리를 선택했으면 결과를 버린다.
+      if (selectedLibraryId === libraryId) {
+        presentations = library.items;
+      }
+    } catch (error) {
+      if (selectedLibraryId === libraryId) {
+        presentations = [];
+        sourceError = getErrorMessage(error);
+      }
+    } finally {
+      if (selectedLibraryId === libraryId) {
+        presentationsLoading = false;
+      }
+    }
   }
 
-  async function handleFetchSelectedClick() {
-    let playlistId = "";
+  function handleLibraryChange(libraryId: string) {
+    selectedLibraryId = libraryId;
+    presentations = [];
+    loadPresentations(libraryId);
+  }
 
-    if (selected !== "selected-playlist") {
-      playlistId = selected;
-    } else {
-      const focusedPlaylist = await getFocusedPlaylist();
+  function handleSelect(newSelection: PSelection) {
+    selection = newSelection;
+    options.name = newSelection.id.name;
+  }
 
-      if (!focusedPlaylist.playlist) {
-        // TODO: 재생목록 대신 단일 프레젠테이션이 선택된 경우
-        // 해당 프레젠테이션의 섬네일 추출
+  async function handleSelectFocused() {
+    sourceBusy = true;
+    sourceError = "";
+
+    try {
+      const focusedPlaylist = await getFocusedPlaylist(baseUrl);
+
+      if (focusedPlaylist.playlist) {
+        sourceTab = "playlist";
+        handleSelect({ type: "playlist", id: focusedPlaylist.playlist });
         return;
       }
 
-      playlistId = focusedPlaylist.playlist.uuid;
-    }
-    const focusedPlaylist = await getFocusedPlaylist();
+      // 재생목록 대신 단일 프레젠테이션이 선택된 경우
+      const focusedPresentation = await getFocusedPresentation(baseUrl);
 
-    if (!focusedPlaylist.playlist) {
-      // TODO: 재생목록 대신 단일 프레젠테이션이 선택된 경우
-      // 해당 프레젠테이션의 섬네일 추출
+      if (focusedPresentation) {
+        sourceTab = "library";
+        handleSelect({ type: "presentation", id: focusedPresentation });
+      } else {
+        sourceError = "ProPresenter에서 선택한 항목을 찾지 못했습니다.";
+      }
+    } catch (error) {
+      sourceError = getErrorMessage(error);
+    } finally {
+      sourceBusy = false;
+    }
+  }
+
+  async function handleReload() {
+    sourceBusy = true;
+    sourceError = "";
+
+    try {
+      [libraries, playlists] = await Promise.all([
+        getLibraryAll(baseUrl),
+        getPlaylistAll(baseUrl),
+      ]);
+
+      if (
+        selectedLibraryId &&
+        !libraries.some((library) => library.uuid === selectedLibraryId)
+      ) {
+        selectedLibraryId = "";
+        presentations = [];
+      }
+    } catch (error) {
+      sourceError = getErrorMessage(error);
+    } finally {
+      sourceBusy = false;
+    }
+
+    if (selectedLibraryId) {
+      await loadPresentations(selectedLibraryId);
+    }
+  }
+
+  async function handleGenerate() {
+    if (!selection) {
       return;
     }
 
-    const playlist = await getPlaylistById(playlistId);
-    playlistState = playlist; // XXX
+    const controller = new AbortController();
+    const { signal } = controller;
+    const title = options.name.trim() || "pp2pdf";
+    const fileName = `${toSafeFileName(title)}.pdf`;
+    const { imageSize, compression, backgroundColor } = options;
 
-    for (const item of playlist.items) {
-      // TODO: 재생목록 루프 돌면서 부가정보(프레젠테이션별 길이 등)를
-      // 기록해야 할 수도 있음.
+    abortController = controller;
+    generation = { phase: "collecting" };
 
-      if (item.type !== "presentation") {
-        // TODO: 헤더, 연결하지 않은 플레이스홀더 처리
-        continue;
-      }
+    try {
+      const imageUrls = await collectSlideImageUrls(
+        baseUrl,
+        selection,
+        imageSize,
+        signal,
+      );
 
-      const { presentation_uuid, arrangement_uuid } = item.presentation_info;
-      const index = item.id.index;
+      // TODO: 헤더 페이지, 비활성 슬라이드, 그룹·라벨 옵션 반영
+      await saveImagesAsPdf(imageUrls, {
+        fileName,
+        title,
+        compression,
+        backgroundColor,
+        signal,
+        onProgress: (done, total) => {
+          generation = { phase: "rendering", done, total };
+        },
+      });
 
-      const { presentation } = await getPresentationByUuid(presentation_uuid);
-      const total_cues = getArrangementLength(presentation, arrangement_uuid);
-
-      for (let c = 0; c < total_cues; c += 1) {
-        thumbs.push(await getPlaylistSlideThumbUrl(playlistId, index, c, 960));
-      }
+      generation = {
+        phase: "idle",
+        result: {
+          type: "success",
+          message: `${fileName} 파일을 만들었습니다. (${imageUrls.length}쪽)`,
+        },
+      };
+    } catch (error) {
+      generation = {
+        phase: "idle",
+        result: signal.aborted
+          ? { type: "info", message: "PDF 생성을 취소했습니다." }
+          : { type: "error", message: getErrorMessage(error) },
+      };
+    } finally {
+      abortController = null;
     }
+  }
+
+  function handleCancel() {
+    abortController?.abort();
+  }
+
+  function toSafeFileName(name: string): string {
+    return name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_");
+  }
+
+  function getErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 </script>
 
-<h1 class="mb-3 border-b border-gray-300 pb-3 text-2xl font-bold">
-  pp2pdf <small>(alpha)</small>
-</h1>
+<svelte:head><title>pp2pdf</title></svelte:head>
 
-<div class="mb-3 space-y-3 border-b border-gray-300 pb-3">
-  <div class="flex gap-3">
-    <select
-      bind:value={selected}
-      class="h-10 max-w-full cursor-pointer rounded border border-gray-700 px-4 hover:bg-gray-100"
-    >
-      <option value="selected-playlist">ProPresenter에서 선택한 항목</option>
+<main class="mx-auto max-w-5xl p-4 sm:p-6">
+  <header class="mb-6">
+    <h1 class="flex items-center gap-2 text-2xl font-bold">
+      pp2pdf
+      <span class="badge badge-ghost badge-sm">alpha</span>
+    </h1>
+    <p class="mt-1 text-sm text-base-content/70">
+      ProPresenter의 재생목록 또는 프레젠테이션을 PDF 파일로 변환합니다.
+    </p>
+  </header>
 
-      <hr />
+  <div class="grid gap-6 lg:grid-cols-2 lg:items-start">
+    <div class="min-w-0 space-y-6">
+      <ConnectionCard
+        bind:host
+        bind:port
+        status={connectionStatus}
+        {baseUrl}
+        error={connectionError}
+        onconnect={handleConnect}
+      />
 
-      {#if playlistAll.length}
-        <option disabled>재생목록</option>
-      {:else}
-        <option disabled>재생목록 없음</option>
-      {/if}
-
-      {#each playlistAll as item (item.id.uuid)}
-        {#if item.field_type === "group"}
-          <optgroup label={item.id.name}>
-            {#each item.children as innerItem (innerItem.id.uuid)}
-              <option
-                value={innerItem.id.uuid}
-                disabled={innerItem.field_type === "group"}
-              >
-                {innerItem.id.name}
-              </option>
-            {/each}
-          </optgroup>
-        {:else}
-          <option value={item.id.uuid}>{item.id.name}</option>
-        {/if}
-      {/each}
-    </select>
-
-    <button
-      type="button"
-      onclick={handleReloadListClick}
-      class="h-10 w-10 cursor-pointer rounded border border-transparent text-2xl text-gray-500 hover:bg-gray-200"
-      title="목록 새로 다시 불러오기"
-    >
-      ♺
-    </button>
-
-    <button
-      type="button"
-      onclick={handleFetchSelectedClick}
-      class="h-10 cursor-pointer rounded border border-sky-700 bg-sky-700 px-6 font-bold text-white hover:border-sky-600 hover:bg-sky-600"
-    >
-      가져오기
-    </button>
-  </div>
-</div>
-
-<div>
-  {#if playlistState}
-    <h2 class="text-xl font-bold">
-      {playlistState.id.name}
-      <code
-        class="ml-1 text-sm font-normal before:content-['('] after:content-[')']"
-      >
-        {playlistState.id.uuid}
-      </code>
-    </h2>
-    <ol>
-      {#each playlistState.items as item, index (item.id.uuid)}
-        {#if item.type === "header"}
-          <li
-            class="flex items-baseline gap-1 font-bold text-white"
-            style={`background-color: rgba(${item.header_color.red * 255}, ${item.header_color.green * 255}, ${item.header_color.blue * 255}, ${item.header_color.alpha});`}
-          >
-            <code class="text-sm">[Hd]</code>
-            <code class="text-sm">
-              {index.toString().padStart(2, "\xa0")}.
-            </code>
-            <span>
-              {item.id.name}
-            </span>
-          </li>
-        {:else}
-          <li class="flex items-baseline gap-1">
-            <code class="text-sm">
-              [{item.type[0].toUpperCase() + item.type[1]}]
-            </code>
-            <code class="text-sm">
-              {index.toString().padStart(2, "\xa0")}.
-            </code>
-            <span>
-              {item.id.name}
-            </span>
-          </li>
-        {/if}
-      {/each}
-    </ol>
-  {/if}
-
-  {#if thumbs.length > 0}
-    <div>
-      <button
-        type="button"
-        onclick={handleSavePdfClick}
-        disabled={isSavingPdf}
-        class="hover-border-sky-600 h-10 cursor-pointer rounded border border-sky-700 bg-sky-700 px-6 font-bold text-white hover:bg-sky-600"
-      >
-        {isSavingPdf
-          ? "PDF 저장 중..."
-          : `슬라이드 이미지 ${thumbs.length}개를 PDF로 저장하기`}
-      </button>
+      <SourceCard
+        {connected}
+        busy={sourceBusy}
+        {libraries}
+        {playlists}
+        {selectedLibraryId}
+        {presentations}
+        {presentationsLoading}
+        bind:tab={sourceTab}
+        {selection}
+        error={sourceError}
+        onlibrarychange={handleLibraryChange}
+        onselect={handleSelect}
+        onselectfocused={handleSelectFocused}
+        onreload={handleReload}
+      />
     </div>
-  {/if}
-</div>
+
+    <div class="min-w-0 lg:sticky lg:top-6">
+      <PdfOptionsCard
+        bind:options
+        selectionType={selection?.type}
+        canGenerate={connected && selection !== null}
+        {generation}
+        ongenerate={handleGenerate}
+        oncancel={handleCancel}
+      />
+    </div>
+  </div>
+</main>
