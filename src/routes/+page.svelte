@@ -10,10 +10,10 @@
   } from "$lib/types/ui";
   import {
     DEFAULT_PDF_OPTIONS,
-    saveImagesAsPdf,
+    saveSlidesAsPdf,
     type PdfOptions,
   } from "$lib/utils/pdf";
-  import { collectSlideImageUrls, type PSelection } from "$lib/utils/pp";
+  import { collectSlidePages, type PSelection } from "$lib/utils/pp";
   import {
     getFocusedPlaylist,
     getFocusedPresentation,
@@ -169,27 +169,34 @@
 
     const controller = new AbortController();
     const { signal } = controller;
-    const title = options.name.trim() || selection.id.name || "pp2pdf";
+    const title = (
+      options.name.trim() ||
+      selection.id.name.trim() ||
+      "pp2pdf"
+    ).normalize("NFC");
     const fileName = `${toSafeFileName(title)}.pdf`;
-    const { imageSize, compression, backgroundColor } = options;
+    const { imageSize, compression, backgroundColor, showGroupsAndLabels } =
+      options;
 
     abortController = controller;
     generation = { phase: "collecting" };
 
     try {
-      const imageUrls = await collectSlideImageUrls(
+      const pages = await collectSlidePages(
         baseUrl,
         selection,
         imageSize,
         signal,
       );
 
-      // TODO: 헤더 페이지, 비활성 슬라이드, 그룹·라벨 옵션 반영
-      await saveImagesAsPdf(imageUrls, {
+      // TODO: 헤더 페이지, 비활성 슬라이드 옵션 반영
+      await saveSlidesAsPdf(pages, {
         fileName,
         title,
         compression,
         backgroundColor,
+        showPresentationName: selection.type === "playlist",
+        showGroupsAndLabels,
         signal,
         onProgress: (done, total) => {
           generation = { phase: "rendering", done, total };
@@ -200,7 +207,7 @@
         phase: "idle",
         result: {
           type: "success",
-          message: `${fileName} 파일을 만들었습니다. (${imageUrls.length}쪽)`,
+          message: `${fileName} 파일을 만들었습니다. (${pages.length}쪽)`,
         },
       };
     } catch (error) {

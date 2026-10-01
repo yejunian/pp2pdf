@@ -99,11 +99,12 @@
     <fieldset class="fieldset gap-3" disabled={generating}>
       <legend class="fieldset-legend">표시 옵션</legend>
 
-      <label class="label text-base-content">
+      <!-- TODO: 구현 전까지 임시로 disabled 처리 -->
+      <label class="label text-base-content line-through">
         <input
           type="checkbox"
           class="toggle toggle-primary"
-          disabled={selectionType === "presentation"}
+          disabled={true || selectionType === "presentation"}
           bind:checked={options.includeHeaderPages}
         />
         재생목록 헤더 페이지 생성
@@ -118,8 +119,9 @@
         슬라이드 그룹, 라벨 표시
       </label>
 
+      <!-- TODO: 구현 전까지 임시로 disabled 처리 -->
       <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span id="pdf-disabled-slides" class="text-base-content">
+        <span id="pdf-disabled-slides" class="text-base-content line-through">
           비활성화된 슬라이드 처리 방법:
         </span>
         <div
@@ -134,6 +136,7 @@
             value="dim"
             aria-label="흐리게 표시"
             bind:group={options.disabledSlides}
+            disabled={true}
           />
           <input
             type="radio"
@@ -142,6 +145,7 @@
             value="skip"
             aria-label="생략"
             bind:group={options.disabledSlides}
+            disabled={true}
           />
         </div>
       </div>

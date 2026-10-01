@@ -65,7 +65,7 @@ type PPlaylistPresentation = PPlaylistItemBase & {
   destination: "presentation" | "announcements";
 };
 
-type PColor = {
+export type PColor = {
   red: number;
   green: number;
   blue: number;
