@@ -5,6 +5,7 @@
 
   interface Props {
     options: PdfOptions;
+    selectionName: string | undefined;
     selectionType: PSelection["type"] | undefined;
     canGenerate: boolean;
     generation: GenerationState;
@@ -14,6 +15,7 @@
 
   let {
     options = $bindable(),
+    selectionName,
     selectionType,
     canGenerate,
     generation,
@@ -41,7 +43,7 @@
         id="pdf-name"
         type="text"
         class="input w-full"
-        placeholder="pp2pdf"
+        placeholder={selectionName || "pp2pdf"}
         bind:value={options.name}
       />
       <p class="label">PDF 제목과 파일 이름으로 사용합니다.</p>

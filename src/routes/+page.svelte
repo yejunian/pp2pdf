@@ -103,7 +103,6 @@
 
   function handleSelect(newSelection: PSelection) {
     selection = newSelection;
-    options.name = newSelection.id.name;
   }
 
   async function handleSelectFocused() {
@@ -170,7 +169,7 @@
 
     const controller = new AbortController();
     const { signal } = controller;
-    const title = options.name.trim() || "pp2pdf";
+    const title = options.name.trim() || selection.id.name || "pp2pdf";
     const fileName = `${toSafeFileName(title)}.pdf`;
     const { imageSize, compression, backgroundColor } = options;
 
@@ -274,6 +273,7 @@
     <div class="min-w-0 lg:sticky lg:top-6">
       <PdfOptionsCard
         bind:options
+        selectionName={selection?.id.name}
         selectionType={selection?.type}
         canGenerate={connected && selection !== null}
         {generation}
