@@ -241,7 +241,7 @@
   <header class="mb-6">
     <h1 class="flex items-center gap-2 text-2xl font-bold">
       pp2pdf
-      <span class="badge badge-ghost badge-sm">alpha</span>
+      <span class="badge badge-ghost badge-sm">beta</span>
     </h1>
     <p class="mt-1 text-sm text-base-content/70">
       ProPresenter의 재생목록 또는 프레젠테이션을 PDF 파일로 변환합니다.
