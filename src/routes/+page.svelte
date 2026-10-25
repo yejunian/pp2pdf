@@ -193,6 +193,7 @@
       await saveSlidesAsPdf(pages, {
         fileName,
         title,
+        imageSize,
         compression,
         backgroundColor,
         showPresentationName: selection.type === "playlist",

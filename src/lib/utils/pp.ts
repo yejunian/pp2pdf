@@ -4,6 +4,7 @@ import {
   getPlaylistSlideThumbUrl,
   getPresentationByUuid,
   getPresentationSlideThumbUrl,
+  type ThumbnailType,
 } from "$lib/utils/pp-requests";
 
 /** PDF로 만들 대상. 재생목록(폴더 제외) 또는 프레젠테이션 1개. */
@@ -14,7 +15,8 @@ export type PSelection = {
 
 /** PDF 한 페이지를 만드는 데 필요한 슬라이드 정보. */
 export type PdfPageSource = {
-  imageUrl: string;
+  /** 같은 슬라이드의 섬네일을 포맷별로 요청하는 주소. */
+  imageUrls: Record<ThumbnailType, string>;
   /** 현재 프레젠테이션 기준 페이지 번호(1부터). */
   pageNumber: number;
   /** 현재 프레젠테이션의 슬라이드 개수. */
@@ -121,7 +123,9 @@ export async function collectSlidePages(
 
     return cues.map((cue, cueIndex) => ({
       ...cue,
-      imageUrl: getPresentationSlideThumbUrl(baseUrl, uuid, cueIndex, quality),
+      imageUrls: makeThumbUrls((type) =>
+        getPresentationSlideThumbUrl(baseUrl, uuid, cueIndex, type, quality),
+      ),
       pageNumber: cueIndex + 1,
       pageCount: cues.length,
       presentationName: presentation.id.name.normalize("NFC"),
@@ -152,12 +156,15 @@ export async function collectSlidePages(
     for (let c = 0; c < cues.length; c += 1) {
       pages.push({
         ...cues[c],
-        imageUrl: getPlaylistSlideThumbUrl(
-          baseUrl,
-          playlistId,
-          index,
-          c,
-          quality,
+        imageUrls: makeThumbUrls((type) =>
+          getPlaylistSlideThumbUrl(
+            baseUrl,
+            playlistId,
+            index,
+            c,
+            type,
+            quality,
+          ),
         ),
         pageNumber: c + 1,
         pageCount: cues.length,
@@ -167,4 +174,10 @@ export async function collectSlidePages(
   }
 
   return pages;
+}
+
+function makeThumbUrls(
+  getUrl: (type: ThumbnailType) => string,
+): Record<ThumbnailType, string> {
+  return { png: getUrl("png"), jpeg: getUrl("jpeg") };
 }
