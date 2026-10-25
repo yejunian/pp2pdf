@@ -34,6 +34,10 @@ export async function getFocusedPresentation(
   return findObjectId(response);
 }
 
+// 섬네일은 PNG로 요청한다. 기본값인 JPEG는 jsPDF가 다시 압축하지 않고 그대로
+// 넣으므로, PDF 생성 옵션의 이미지 압축 수준이 적용되지 않는다.
+const THUMBNAIL_TYPE = "png";
+
 export function getPlaylistSlideThumbUrl(
   baseUrl: string,
   id: string,
@@ -41,7 +45,7 @@ export function getPlaylistSlideThumbUrl(
   cueIndex: number,
   quality: number = 480,
 ): string {
-  return `${baseUrl}/v1/playlist/${id}/${itemIndex}/thumbnail/${cueIndex}?quality=${quality}`;
+  return `${baseUrl}/v1/playlist/${id}/${itemIndex}/thumbnail/${cueIndex}?quality=${quality}&thumbnail_type=${THUMBNAIL_TYPE}`;
 }
 
 export function getPresentationSlideThumbUrl(
@@ -50,7 +54,7 @@ export function getPresentationSlideThumbUrl(
   cueIndex: number,
   quality: number = 480,
 ): string {
-  return `${baseUrl}/v1/presentation/${uuid}/thumbnail/${cueIndex}?quality=${quality}`;
+  return `${baseUrl}/v1/presentation/${uuid}/thumbnail/${cueIndex}?quality=${quality}&thumbnail_type=${THUMBNAIL_TYPE}`;
 }
 
 export async function getPlaylistById(
