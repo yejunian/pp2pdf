@@ -58,15 +58,19 @@ const DEFAULT_FILE_NAME = "pp2pdf.pdf";
 const FONT_FILE_NAME = "Freesentation-6SemiBold.ttf";
 const FONT_NAME = "Freesentation";
 
+/** 상단 텍스트 줄별 글자 크기·줄 높이 배율. 둘째 줄은 첫 줄의 80%로 줄인다. */
+const LINE_SCALES = [1, 0.8];
+
 /**
  * 슬라이드 정보 배열을 받아 각 슬라이드를 한 페이지씩 담은 PDF를 만들어
  * 저장한다.
  *
  * 길이 단위는 pt이며, 슬라이드 이미지의 1px을 1pt로 넣는다. 페이지 여백
- * padding은 ceil(슬라이드 가로 / 160)이다. 슬라이드 이미지는 그룹 색상
- * 테두리(두께 padding)로 감싸서 페이지 아래쪽에 두고, 그 위로 텍스트 줄(각
- * 높이 padding * 10)을 옵션에 따라 0~2줄 둔다. 페이지 번호는 항상 페이지
- * 오른쪽 위에 넣는다.
+ * padding은 (슬라이드 가로 / 160)을 짝수로 올림한 값이다. 슬라이드 이미지는
+ * 그룹 색상 테두리(두께 padding)로 감싸서 페이지 아래쪽에 두고, 그 위로
+ * 텍스트 줄을 옵션에 따라 0~2줄 둔다. 첫 줄은 글자 크기 padding * 8, 높이
+ * padding * 10이고, 둘째 줄은 둘 다 첫 줄의 80%이다. 페이지 번호는 항상
+ * 페이지 오른쪽 위에 첫 줄과 같은 크기로 넣는다.
  */
 export async function saveSlidesAsPdf(
   pages: PdfPageSource[],
@@ -90,6 +94,8 @@ export async function saveSlidesAsPdf(
   const background = parseHexColor(backgroundColor);
   const fontBase64 = await fetchFontBase64(signal);
   const lineCount = Number(showPresentationName) + Number(showGroupsAndLabels);
+  const lineScales = LINE_SCALES.slice(0, lineCount);
+  const textScale = lineScales.reduce((sum, scale) => sum + scale, 0);
   let doc: jsPDF | undefined;
 
   onProgress?.(0, pages.length);
@@ -105,10 +111,11 @@ export async function saveSlidesAsPdf(
       height: slideHeight,
     } = await fetchImage(page.imageUrl, signal);
 
-    const padding = Math.ceil(slideWidth / 160);
+    const padding = Math.ceil(slideWidth / 320) * 2;
+    const fontSize = padding * 8;
     const lineHeight = padding * 10;
     const pageWidth = padding * 4 + slideWidth;
-    const pageHeight = padding * 4 + slideHeight + lineHeight * lineCount;
+    const pageHeight = padding * 4 + slideHeight + lineHeight * textScale;
     const orientation = pageWidth >= pageHeight ? "landscape" : "portrait";
 
     if (!doc) {
@@ -157,7 +164,7 @@ export async function saveSlidesAsPdf(
       compression,
     );
 
-    doc.setFontSize(padding * 8);
+    doc.setFontSize(fontSize);
     doc.setTextColor(0, 0, 0);
 
     // 페이지 번호. 텍스트 줄이 없으면 슬라이드와 겹치므로 흰색 외곽선을 먼저
@@ -186,18 +193,23 @@ export async function saveSlidesAsPdf(
     const fullWidth = pageWidth - padding * 2;
     const firstLineWidth =
       fullWidth - doc.getTextWidth(pageNumber) - padding * 4;
+    let lineTop = padding;
     lines.forEach((line, lineIndex) => {
+      const scale = lineScales[lineIndex];
+      // fitText가 줄인 글자 크기로 폭을 재도록 먼저 크기를 바꾼다.
+      doc!.setFontSize(fontSize * scale);
       const text = fitText(
         doc!,
         line,
         lineIndex === 0 ? firstLineWidth : fullWidth,
       );
       if (text) {
-        doc!.text(text, padding, firstLineY + lineHeight * lineIndex, {
+        doc!.text(text, padding, lineTop + (lineHeight * scale) / 2, {
           baseline: "middle",
           renderingMode: "fill",
         });
       }
+      lineTop += lineHeight * scale;
     });
 
     onProgress?.(index + 1, pages.length);
