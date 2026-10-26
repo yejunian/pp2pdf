@@ -33,6 +33,7 @@ ProPresenter의 재생목록 또는 프레젠테이션을 화면 표시용 PDF�
    - Mac: `http://localhost:50001`(ProPresenter 21.4)
    - Windows: 사용자가 알려 주는 LAN 주소의 50001 포트(ProPresenter 21.4.2). 재부팅하면 IP가 바뀔 수 있다. LAN 요청은 샌드박스 밖에서 보내야 한다.
    - Windows 섬네일에 큰 `quality`를 요청하지 않는다. 가장 크게 렌더링한 이미지가 캐시에 남아, ProPresenter를 다시 시작할 때까지 같은 슬라이드의 응답이 커진다.
+5. 처리 시간을 비교할 때는 ProPresenter의 렌더링 캐시를 고려한다. 모든 방식을 캐시가 데워진 상태에서 재거나, 요청한 적 없는 슬라이드에 방식을 번갈아 배정한다.
 
 ## PDF 레이아웃 (`src/lib/utils/pdf.ts`의 `saveSlidesAsPdf`)
 
@@ -52,13 +53,15 @@ ProPresenter의 재생목록 또는 프레젠테이션을 화면 표시용 PDF�
 ## 슬라이드 이미지 (`src/lib/utils/pdf.ts`의 `fetchSlideImage`)
 
 - 사용자가 정한 규칙이므로 되돌리지 않는다.
-  - 페이지마다 섬네일을 슬라이드 크기(`imageSize`)의 PNG와 JPEG로 1장씩 받아, 저장 크기가 더 크지 않은 쪽을 넣는다. 크기가 같으면 PNG를 쓴다.
-  - PNG가 작으면 받은 PNG를 그대로 넣는다. JPEG가 작으면 받은 JPEG는 비교에만 쓰고, 받은 PNG 뒤에 배경색을 깔아 JPEG로 변환해 넣는다.
-- 받은 섬네일의 긴 변이 `imageSize`보다 크면(Windows 재생목록 섬네일) 줄인 뒤, 브라우저에서 PNG와 JPEG로 각각 인코딩해 비교한다. 받은 크기 그대로 비교하면 출력 크기에서의 우열과 맞지 않는다(Windows 128장 중 111장이 어긋났다).
+  - 페이지마다 섬네일을 슬라이드 크기(`imageSize`)의 PNG로만 받는다. 받은 PNG와, 그 뒤에 배경색을 깔아 JPEG로 변환한 것 중 하나를 넣는다.
+  - PNG 크기의 80%가 JPEG 크기의 100%보다 크지 않으면 PNG를 넣는다. 크기가 비슷하면 무손실인 PNG가 선택되게 하기 위해서다. 배율은 정수 백분율(`PNG_SIZE_PERCENT` = 80)로 두고 `PNG 크기 × 80 ≤ JPEG 크기 × 100`으로 비교한다.
+  - JPEG 변환 품질(`JPEG_QUALITY`)은 0.9다. 검토·공유용 PDF 기준으로, 0.92와 확대해도 구분되지 않으면서 JPEG가 약 6% 작다. 0.9 미만은 Firefox가 크로마 서브샘플링을 켜서 작은 색 글자가 흐려지고, 0.85부터는 확대하면 글자 주변에 블록 잡티가 보인다. Safari는 0.85~0.92의 결과가 거의 같다.
+  - 예전에는 ProPresenter의 JPEG 섬네일도 받아 PNG와 크기를 비교했다. PDF 크기 차이는 5% 이내인데 섬네일 수신이 느려서(Mac 819쪽 기준 약 3분의 1) 바꿨다.
+- 받은 섬네일의 긴 변이 `imageSize`보다 크면(Windows 재생목록 섬네일) 줄인 뒤, 브라우저에서 PNG와 JPEG로 각각 인코딩해 비교한다.
   - 줄일 때는 `createImageBitmap`의 `resizeQuality: "high"`를 쓴다. `drawImage`로 줄이면 Firefox와 Safari에서 `imageSmoothingQuality`와 관계없이 글자 가장자리가 거칠어진다.
 - 섬네일은 `colorSpaceConversion: "none"`으로 디코딩한다. jsPDF가 PNG의 색 프로필을 무시하므로, 두 포맷으로 넣은 페이지의 색을 맞추기 위해서다.
-- JPEG 변환 품질 `JPEG_QUALITY`는 0.92다. 같은 값이라도 브라우저 인코더마다 결과가 달라서, Chrome에서 Mac ProPresenter JPEG와 PSNR이 같아지는 값으로 정했다(근거는 상수 주석). Safari는 0.75에서 같아진다.
 - 이미지 압축 수준(`compression`)은 PNG로 넣는 페이지에만 적용된다. jsPDF는 JPEG를 다시 압축하지 않고 그대로 넣는다.
+- jsPDF 문서 옵션 `compress: true`를 켠다. 페이지 내용과 폰트 스트림만 Flate로 압축되고 이미지 스트림은 다시 압축되지 않으며, PDF마다 약 0.16~0.21MB 줄어든다.
 - PNG에 투명 픽셀이 있으면 jsPDF가 SMask를 붙인다. 그래서 이미지보다 배경색 사각형을 먼저 그린다.
 
 ## ProPresenter API 메모
@@ -68,19 +71,12 @@ ProPresenter의 재생목록 또는 프레젠테이션을 화면 표시용 PDF�
 - 섬네일
   - `thumbnail_type`은 `jpeg` 또는 `png`이다. 생략하면 `jpeg`와 바이트까지 같은 JPEG를 준다.
   - 명세상 `quality`는 긴 변의 픽셀 수다.
-  - Mac(21.4): 재생목록·프레젠테이션 경로 모두 명세대로 요청한 크기를 준다. Retina 배율과 캐시의 영향이 없다.
+  - Mac(21.4): 재생목록·프레젠테이션 경로 모두 명세대로 요청한 크기를 준다. Retina 배율의 영향이 없고, 캐시 때문에 더 크게 오는 일도 없다.
   - Mac PNG는 RGBA지만 투명 픽셀이 없다(빈 슬라이드의 투명 영역은 체크무늬로 그려 준다). 그래서 "투명 영역 색상 (Windows 전용)" 표기가 맞다. JPEG는 Apple ImageIO 품질 0.75(4:2:0)다.
   - Windows(21.4.2): 프레젠테이션 경로는 명세대로다. 재생목록 경로는 `quality`를 짧은 변 길이로 보고 디스플레이 배율을 곱한다(960 요청 → 100%면 1706×960, 200%면 3412×1920). 또 내용이 같은 슬라이드끼리 캐시를 공유해, 지금까지 가장 크게 렌더링한 이미지를 돌려준다.
+    - 세로 슬라이드에서 `quality`가 짧은 변 기준인지 세로 길이 기준인지는 확인하지 않았다.
   - Windows PNG는 투명 영역이 있는 RGBA(straight alpha)이고, JPEG는 IJG 표준 테이블 품질 90이다.
+  - Mac은 슬라이드를 처음 렌더링할 때만 약 50ms가 더 걸리고, 이후에는 포맷·크기와 관계없이 캐시를 쓴다. PNG와 JPEG를 동시에 요청해도 겹쳐 처리하지 못한다. Windows는 이런 차이가 거의 없다.
+- 라이브러리 UUID는 ProPresenter를 다시 시작하면 바뀐다(재생목록 UUID는 그대로다).
 - 그룹 색상 `PColor`는 0~1 실수이므로 ×255로 변환한다(Windows 응답으로 확인). 색이 없는 그룹은 `null`로 온다.
 - macOS에서는 이름이 NFD로 올 수 있으므로 `normalize("NFC")` 한 뒤 비교하고 출력한다.
-
-## 진행 중인 작업: 섬네일 이미지 포맷 (`feature/png-thumbnails`)
-
-- 페이지마다 PNG/JPEG 중 가벼운 쪽을 넣도록 구현했다. Mac과 Windows(배율 100%, 200%) 서버에서 Chrome, Firefox, WebKit으로 확인했다.
-- main에는 병합하지 않았다. 요청 없이 병합하거나 main에 같은 수정을 넣지 않는다.
-- 남은 검토 사항
-  - jsPDF 문서 옵션 `compress: true`를 켤지. 켜면 1페이지 기준 362KB가 191KB로 줄었다.
-  - Safari에서도 ProPresenter JPEG와 화질을 맞추려면, 브라우저 인코더를 확인해 ImageIO면 품질 0.75를 쓰는 방법이 있다(제안만 했다).
-  - 받은 크기 그대로 비교하는 경우, Windows 프레젠테이션 경로에서는 최적보다 이미지 합계가 약 3% 크다. 명세대로 두었다.
-  - Windows에 세로 슬라이드가 없어서, 재생목록 경로의 `quality`가 짧은 변인지 세로 길이인지 확인하지 못했다.
