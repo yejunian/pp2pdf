@@ -163,10 +163,12 @@ export async function saveSlidesAsPdf(
     const orientation = pageWidth >= pageHeight ? "landscape" : "portrait";
 
     if (!doc) {
+      // compress: 페이지 내용과 폰트 등 문서 스트림을 Flate로 압축한다.
       doc = new jsPDF({
         unit: "pt",
         format: [pageWidth, pageHeight],
         orientation,
+        compress: true,
       });
       if (title) {
         doc.setDocumentProperties({ title });
