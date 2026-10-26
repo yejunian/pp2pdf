@@ -3,14 +3,20 @@ import fontUrl from "$lib/assets/Freesentation-6SemiBold.ttf?url";
 import type { PColor } from "$lib/types/pp";
 import type { PdfPageSource } from "$lib/utils/pp";
 
-/** jsPDF 이미지 압축 수준. 무압축("NONE")은 쓰지 않는다. */
+/**
+ * jsPDF 이미지 압축 수준. 무압축("NONE")은 쓰지 않는다. PNG로 넣는 페이지에만
+ * 적용되고, JPEG는 압축 수준과 관계없이 그대로 들어간다.
+ */
 export type PdfCompression = "FAST" | "MEDIUM" | "SLOW";
 
 /** 사용자가 화면에서 고르는 PDF 생성 옵션. */
 export interface PdfOptions {
   /** PDF 제목 및 파일 이름. */
   name: string;
-  /** 슬라이드 이미지의 긴 변 길이(px). ProPresenter 섬네일 요청과 페이지 크기에 쓴다. */
+  /**
+   * 슬라이드 이미지의 긴 변 길이(px). ProPresenter 섬네일 요청과 페이지 크기에
+   * 쓰며, 이보다 크게 받은 섬네일은 이 크기로 줄인다.
+   */
   imageSize: number;
   compression: PdfCompression;
   /** 이미지의 투명한 부분 뒤로 깔 배경 색상. */
@@ -39,7 +45,9 @@ export interface SaveSlidesAsPdfOptions {
   fileName?: string;
   /** PDF 문서 속성의 제목. */
   title?: string;
-  /** 이미지 압축 수준. 기본값 "MEDIUM". */
+  /** 슬라이드 이미지의 긴 변 길이(px). 섬네일이 이보다 크면 줄인다. 기본값 960. */
+  imageSize?: number;
+  /** PNG 이미지 압축 수준. 기본값 "MEDIUM". */
   compression?: PdfCompression;
   /** 투명 영역 배경 색상. 기본값 "#161616". */
   backgroundColor?: string;
@@ -67,6 +75,29 @@ const FONT_NAME = "Freesentation";
 const LINE_SCALE_PERCENTS = [100, 80];
 
 /**
+ * PNG 섬네일을 JPEG로 변환할 때의 품질(0~1).
+ *
+ * 검토·공유용 PDF 기준으로 정했다. 0.92와 비교해 확대해도 화질 차이가 눈에
+ * 띄지 않으면서, Chrome에서 JPEG 크기가 약 6% 작다. 0.9보다 낮추면 Firefox가
+ * 크로마 서브샘플링을 켜서 작은 색 글자가 흐려지고, 0.85부터는 확대했을 때
+ * 글자 주변에 블록 잡티가 보인다. Safari(ImageIO)는 0.85~0.92의 결과가 거의
+ * 같다.
+ *
+ * 참고로 ProPresenter의 JPEG 섬네일은 Mac(21.4)이 Apple ImageIO 품질 0.75,
+ * Windows(21.4.2)가 IJG 표준 테이블 품질 90이다. Chrome 0.9는 Mac JPEG와
+ * 화질이 비슷하고(PSNR 약 0.5dB 낮음), Windows JPEG보다 화질이 높고 작다.
+ */
+const JPEG_QUALITY = 0.9;
+
+/**
+ * 포맷을 고를 때 PNG 크기에 곱하는 배율(%). 크기가 비슷하면 무손실인 PNG가
+ * 선택되도록, PNG 크기의 80%를 JPEG 크기의 100%와 비교한다.
+ *
+ * 부동소수점 오차를 피하려고 정수 백분율로 두고, 정수끼리 곱해서 비교한다.
+ */
+const PNG_SIZE_PERCENT = 80;
+
+/**
  * 슬라이드 정보 배열을 받아 각 슬라이드를 한 페이지씩 담은 PDF를 만들어
  * 저장한다.
  *
@@ -76,6 +107,9 @@ const LINE_SCALE_PERCENTS = [100, 80];
  * 텍스트 줄을 옵션에 따라 0~2줄 둔다. 첫 줄은 글자 크기 padding * 8, 높이
  * padding * 10이고, 둘째 줄은 둘 다 첫 줄의 80%이다(줄 높이는 소수점 올림).
  * 페이지 번호는 항상 페이지 오른쪽 위에 첫 줄과 같은 크기로 넣는다.
+ *
+ * 슬라이드 이미지는 페이지마다 PNG와 JPEG 중 하나로 넣는다. 크기가 비슷하면
+ * PNG를 쓴다(`fetchSlideImage` 참고).
  */
 export async function saveSlidesAsPdf(
   pages: PdfPageSource[],
@@ -84,6 +118,7 @@ export async function saveSlidesAsPdf(
   const {
     fileName = DEFAULT_FILE_NAME,
     title,
+    imageSize = DEFAULT_PDF_OPTIONS.imageSize,
     compression = DEFAULT_PDF_OPTIONS.compression,
     backgroundColor = DEFAULT_PDF_OPTIONS.backgroundColor,
     showPresentationName = false,
@@ -113,7 +148,7 @@ export async function saveSlidesAsPdf(
       format,
       width: slideWidth,
       height: slideHeight,
-    } = await fetchImage(page.imageUrl, signal);
+    } = await fetchSlideImage(page.imageUrl, imageSize, background, signal);
 
     const padding = Math.ceil(slideWidth / 320) * 2;
     const fontSize = padding * 8;
@@ -128,10 +163,12 @@ export async function saveSlidesAsPdf(
     const orientation = pageWidth >= pageHeight ? "landscape" : "portrait";
 
     if (!doc) {
+      // compress: 페이지 내용과 폰트 등 문서 스트림을 Flate로 압축한다.
       doc = new jsPDF({
         unit: "pt",
         format: [pageWidth, pageHeight],
         orientation,
+        compress: true,
       });
       if (title) {
         doc.setDocumentProperties({ title });
@@ -161,7 +198,8 @@ export async function saveSlidesAsPdf(
     doc.setFillColor(...background);
     doc.rect(padding * 2, slideTop, slideWidth, slideHeight, "F");
 
-    // alias는 지정하지 않고(undefined), compression으로 이미지를 압축한다.
+    // alias는 지정하지 않는다(undefined). compression은 PNG에만 적용되고,
+    // JPEG는 데이터를 그대로 넣는다.
     doc.addImage(
       dataUrl,
       format,
@@ -282,32 +320,133 @@ async function fetchFontBase64(signal?: AbortSignal): Promise<string> {
   }
 }
 
-async function fetchImage(
+interface SlideImage {
+  dataUrl: string;
+  format: ImageFormat;
+  width: number;
+  height: number;
+}
+
+/**
+ * 슬라이드 섬네일을 PNG로 받아서, 받은 PNG와 이를 JPEG로 변환한 것 중 PDF에
+ * 넣을 이미지를 고른다(`pickFormat` 참고). JPEG는 PNG 뒤에 배경색을 깔고
+ * 변환하므로 투명한 부분이 배경색으로 보인다.
+ *
+ * ProPresenter의 JPEG 섬네일은 받지 않는다. 받아서 PNG와 크기를 비교해도 PDF
+ * 크기 차이는 5% 이내인데, 요청이 두 배가 되어 섬네일 수신이 느려진다(Mac은
+ * PNG와 JPEG를 동시에 요청해도 겹쳐 처리하지 못한다).
+ *
+ * 섬네일의 긴 변이 imageSize보다 크면 먼저 imageSize로 줄인 뒤, 줄인 이미지를
+ * PNG와 JPEG로 각각 인코딩해서 비교한다. Windows판 ProPresenter의 재생목록
+ * 섬네일이 이렇게 요청보다 크게 온다. quality를 짧은 변 길이로 보고 디스플레이
+ * 배율까지 곱해서 만들며, 내용이 같은 슬라이드는 이전에 더 크게 만든 섬네일을
+ * 그대로 주기 때문이다.
+ */
+async function fetchSlideImage(
   url: string,
+  imageSize: number,
+  background: [number, number, number],
   signal?: AbortSignal,
-): Promise<{ dataUrl: string; format: string; width: number; height: number }> {
+): Promise<SlideImage> {
+  const png = await fetchBlob(url, signal);
+  // jsPDF는 PNG의 색 프로필을 무시하고 픽셀값을 그대로 넣는다. JPEG로 변환할
+  // 때도 색 공간을 바꾸지 않아야 두 포맷으로 넣은 페이지의 색이 같아진다.
+  const bitmap = await createImageBitmap(png, { colorSpaceConversion: "none" });
+
+  try {
+    const scale = imageSize / Math.max(bitmap.width, bitmap.height);
+
+    if (scale >= 1) {
+      return await pickFormat(png, bitmap, background);
+    }
+
+    // drawImage로 크게 줄이면 Firefox와 Safari에서 글자 가장자리가 거칠어지므로
+    // createImageBitmap의 고품질 리사이즈를 쓴다.
+    const resized = await createImageBitmap(bitmap, {
+      resizeWidth: Math.round(bitmap.width * scale),
+      resizeHeight: Math.round(bitmap.height * scale),
+      resizeQuality: "high",
+    });
+
+    try {
+      const resizedPng = drawOnCanvas(resized).convertToBlob({
+        type: "image/png",
+      });
+      return await pickFormat(resizedPng, resized, background);
+    } finally {
+      resized.close();
+    }
+  } finally {
+    bitmap.close();
+  }
+}
+
+/**
+ * PNG와, 같은 이미지 뒤에 배경색을 깔고 변환한 JPEG 중 PDF에 넣을 쪽을 고른다.
+ * PNG 크기의 80%(`PNG_SIZE_PERCENT`)가 JPEG 크기보다 크지 않으면 PNG를 쓴다.
+ * png는 image를 인코딩한 것이어야 한다.
+ */
+async function pickFormat(
+  png: Blob | Promise<Blob>,
+  image: ImageBitmap,
+  background: [number, number, number],
+): Promise<SlideImage> {
+  const [pngBlob, jpegBlob] = await Promise.all([
+    png,
+    convertToJpeg(image, background),
+  ]);
+  const { width, height } = image;
+
+  if (pngBlob.size * PNG_SIZE_PERCENT <= jpegBlob.size * 100) {
+    const dataUrl = await blobToDataUrl(pngBlob);
+    return { dataUrl, format: mimeToImageFormat(pngBlob.type), width, height };
+  }
+
+  const dataUrl = await blobToDataUrl(jpegBlob);
+  return { dataUrl, format: "JPEG", width, height };
+}
+
+async function fetchBlob(url: string, signal?: AbortSignal): Promise<Blob> {
   const response = await fetch(url, { signal });
 
   if (!response.ok) {
     throw new Error(`이미지를 불러오지 못했습니다: ${response.status} ${url}`);
   }
 
-  const blob = await response.blob();
-  const [dataUrl, { width, height }] = await Promise.all([
-    blobToDataUrl(blob),
-    getImageSize(blob),
-  ]);
-
-  return { dataUrl, format: mimeToImageFormat(blob.type), width, height };
+  return await response.blob();
 }
 
-async function getImageSize(
-  blob: Blob,
-): Promise<{ width: number; height: number }> {
-  const bitmap = await createImageBitmap(blob);
-  const { width, height } = bitmap;
-  bitmap.close();
-  return { width, height };
+/** 이미지 뒤에 배경색을 깔고 JPEG로 변환한다. */
+async function convertToJpeg(
+  image: ImageBitmap,
+  background: [number, number, number],
+): Promise<Blob> {
+  return await drawOnCanvas(image, background).convertToBlob({
+    type: "image/jpeg",
+    quality: JPEG_QUALITY,
+  });
+}
+
+/** 이미지와 같은 크기의 캔버스에 이미지를 그린다. background가 있으면 먼저 깐다. */
+function drawOnCanvas(
+  image: ImageBitmap,
+  background?: [number, number, number],
+): OffscreenCanvas {
+  const canvas = new OffscreenCanvas(image.width, image.height);
+  const context = canvas.getContext("2d");
+
+  if (!context) {
+    throw new Error("이미지를 변환하지 못했습니다.");
+  }
+
+  if (background) {
+    const [red, green, blue] = background;
+    context.fillStyle = `rgb(${red}, ${green}, ${blue})`;
+    context.fillRect(0, 0, image.width, image.height);
+  }
+
+  context.drawImage(image, 0, 0);
+  return canvas;
 }
 
 function blobToDataUrl(blob: Blob): Promise<string> {
@@ -319,8 +458,10 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
+type ImageFormat = "PNG" | "JPEG";
+
 // ProPresenter는 jpeg 또는 png만 응답하므로 두 포맷만 처리한다.
-function mimeToImageFormat(mimeType: string): string {
+function mimeToImageFormat(mimeType: string): ImageFormat {
   return mimeType === "image/png" ? "PNG" : "JPEG";
 }
 
