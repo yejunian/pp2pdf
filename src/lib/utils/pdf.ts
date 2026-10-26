@@ -2,7 +2,6 @@ import { jsPDF } from "jspdf";
 import fontUrl from "$lib/assets/Freesentation-6SemiBold.ttf?url";
 import type { PColor } from "$lib/types/pp";
 import type { PdfPageSource } from "$lib/utils/pp";
-import type { ThumbnailType } from "$lib/utils/pp-requests";
 
 /**
  * jsPDF 이미지 압축 수준. 무압축("NONE")은 쓰지 않는다. PNG로 넣는 페이지에만
@@ -78,16 +77,25 @@ const LINE_SCALE_PERCENTS = [100, 80];
 /**
  * PNG 섬네일을 JPEG로 변환할 때의 품질(0~1).
  *
- * ProPresenter 21.4(Mac)는 JPEG 섬네일을 Apple ImageIO 품질 0.75로 만든다.
- * 같은 품질 값이라도 브라우저의 JPEG 인코더마다 결과가 달라서, Chrome에서
- * ProPresenter JPEG와 화질(PSNR)이 같아지는 0.92를 쓴다. Safari(ImageIO)는
- * 0.75에서 같아지고, Firefox는 0.9 이상에서 크로마 서브샘플링을 끈다. 그래서
- * 둘 다 0.92에서는 ProPresenter JPEG보다 파일이 커진다.
+ * 검토·공유용 PDF 기준으로 정했다. 0.92와 비교해 확대해도 화질 차이가 눈에
+ * 띄지 않으면서, Chrome에서 JPEG 크기가 약 6% 작다. 0.9보다 낮추면 Firefox가
+ * 크로마 서브샘플링을 켜서 작은 색 글자가 흐려지고, 0.85부터는 확대했을 때
+ * 글자 주변에 블록 잡티가 보인다. Safari(ImageIO)는 0.85~0.92의 결과가 거의
+ * 같다.
  *
- * Windows판(21.4.2)은 IJG 표준 테이블 품질 90을 쓴다. 다만 Chrome에서 0.92로
- * 변환한 JPEG가 ProPresenter JPEG보다 화질은 높고 파일은 작다.
+ * 참고로 ProPresenter의 JPEG 섬네일은 Mac(21.4)이 Apple ImageIO 품질 0.75,
+ * Windows(21.4.2)가 IJG 표준 테이블 품질 90이다. Chrome 0.9는 Mac JPEG와
+ * 화질이 비슷하고(PSNR 약 0.5dB 낮음), Windows JPEG보다 화질이 높고 작다.
  */
-const JPEG_QUALITY = 0.92;
+const JPEG_QUALITY = 0.9;
+
+/**
+ * 포맷을 고를 때 PNG 크기에 곱하는 배율(%). 크기가 비슷하면 무손실인 PNG가
+ * 선택되도록, PNG 크기의 80%를 JPEG 크기의 100%와 비교한다.
+ *
+ * 부동소수점 오차를 피하려고 정수 백분율로 두고, 정수끼리 곱해서 비교한다.
+ */
+const PNG_SIZE_PERCENT = 80;
 
 /**
  * 슬라이드 정보 배열을 받아 각 슬라이드를 한 페이지씩 담은 PDF를 만들어
@@ -100,8 +108,8 @@ const JPEG_QUALITY = 0.92;
  * padding * 10이고, 둘째 줄은 둘 다 첫 줄의 80%이다(줄 높이는 소수점 올림).
  * 페이지 번호는 항상 페이지 오른쪽 위에 첫 줄과 같은 크기로 넣는다.
  *
- * 슬라이드 이미지는 페이지마다 PNG와 JPEG 중 저장 크기가 더 크지 않은 쪽의
- * 포맷으로 넣는다(`fetchSlideImage` 참고).
+ * 슬라이드 이미지는 페이지마다 PNG와 JPEG 중 하나로 넣는다. 크기가 비슷하면
+ * PNG를 쓴다(`fetchSlideImage` 참고).
  */
 export async function saveSlidesAsPdf(
   pages: PdfPageSource[],
@@ -140,7 +148,7 @@ export async function saveSlidesAsPdf(
       format,
       width: slideWidth,
       height: slideHeight,
-    } = await fetchSlideImage(page.imageUrls, imageSize, background, signal);
+    } = await fetchSlideImage(page.imageUrl, imageSize, background, signal);
 
     const padding = Math.ceil(slideWidth / 320) * 2;
     const fontSize = padding * 8;
@@ -318,30 +326,27 @@ interface SlideImage {
 }
 
 /**
- * 같은 슬라이드의 섬네일을 PNG와 JPEG로 1장씩 받아서, 저장 크기가 더 크지
- * 않은 쪽의 포맷으로 PDF에 넣을 이미지를 만든다. 크기가 같으면 PNG를 쓴다.
+ * 슬라이드 섬네일을 PNG로 받아서, 받은 PNG와 이를 JPEG로 변환한 것 중 PDF에
+ * 넣을 이미지를 고른다(`pickFormat` 참고). JPEG는 PNG 뒤에 배경색을 깔고
+ * 변환하므로 투명한 부분이 배경색으로 보인다.
  *
- * - PNG가 더 작으면 받은 PNG를 그대로 쓴다.
- * - JPEG가 더 작으면 받은 JPEG는 크기 비교에만 쓴다. 받은 PNG 뒤에 배경색을
- *   깔고 JPEG로 변환해서, 투명한 부분이 배경색으로 보이게 한다.
+ * ProPresenter의 JPEG 섬네일은 받지 않는다. 받아서 PNG와 크기를 비교해도 PDF
+ * 크기 차이는 5% 이내인데, 요청이 두 배가 되어 섬네일 수신이 느려진다(Mac은
+ * PNG와 JPEG를 동시에 요청해도 겹쳐 처리하지 못한다).
  *
- * 섬네일의 긴 변이 imageSize보다 크면 받은 PNG를 imageSize로 줄인다. 이때는
- * 받은 두 이미지의 크기가 출력 크기에서의 크기와 맞지 않으므로, 줄인 이미지를
+ * 섬네일의 긴 변이 imageSize보다 크면 먼저 imageSize로 줄인 뒤, 줄인 이미지를
  * PNG와 JPEG로 각각 인코딩해서 비교한다. Windows판 ProPresenter의 재생목록
  * 섬네일이 이렇게 요청보다 크게 온다. quality를 짧은 변 길이로 보고 디스플레이
  * 배율까지 곱해서 만들며, 내용이 같은 슬라이드는 이전에 더 크게 만든 섬네일을
  * 그대로 주기 때문이다.
  */
 async function fetchSlideImage(
-  urls: Record<ThumbnailType, string>,
+  url: string,
   imageSize: number,
   background: [number, number, number],
   signal?: AbortSignal,
 ): Promise<SlideImage> {
-  const [png, jpeg] = await Promise.all([
-    fetchBlob(urls.png, signal),
-    fetchBlob(urls.jpeg, signal),
-  ]);
+  const png = await fetchBlob(url, signal);
   // jsPDF는 PNG의 색 프로필을 무시하고 픽셀값을 그대로 넣는다. JPEG로 변환할
   // 때도 색 공간을 바꾸지 않아야 두 포맷으로 넣은 페이지의 색이 같아진다.
   const bitmap = await createImageBitmap(png, { colorSpaceConversion: "none" });
@@ -349,55 +354,54 @@ async function fetchSlideImage(
   try {
     const scale = imageSize / Math.max(bitmap.width, bitmap.height);
 
-    if (scale < 1) {
-      return await shrinkAndPickSmaller(bitmap, scale, background);
+    if (scale >= 1) {
+      return await pickFormat(png, bitmap, background);
     }
 
-    const { width, height } = bitmap;
+    // drawImage로 크게 줄이면 Firefox와 Safari에서 글자 가장자리가 거칠어지므로
+    // createImageBitmap의 고품질 리사이즈를 쓴다.
+    const resized = await createImageBitmap(bitmap, {
+      resizeWidth: Math.round(bitmap.width * scale),
+      resizeHeight: Math.round(bitmap.height * scale),
+      resizeQuality: "high",
+    });
 
-    if (png.size <= jpeg.size) {
-      const dataUrl = await blobToDataUrl(png);
-      return { dataUrl, format: mimeToImageFormat(png.type), width, height };
+    try {
+      const resizedPng = drawOnCanvas(resized).convertToBlob({
+        type: "image/png",
+      });
+      return await pickFormat(resizedPng, resized, background);
+    } finally {
+      resized.close();
     }
-
-    const dataUrl = await blobToDataUrl(
-      await convertToJpeg(bitmap, background),
-    );
-    return { dataUrl, format: "JPEG", width, height };
   } finally {
     bitmap.close();
   }
 }
 
 /**
- * 이미지를 scale배로 줄인 뒤 PNG와 JPEG(배경색을 깖)로 각각 인코딩해서, 저장
- * 크기가 더 크지 않은 쪽을 고른다.
+ * PNG와, 같은 이미지 뒤에 배경색을 깔고 변환한 JPEG 중 PDF에 넣을 쪽을 고른다.
+ * PNG 크기의 80%(`PNG_SIZE_PERCENT`)가 JPEG 크기보다 크지 않으면 PNG를 쓴다.
+ * png는 image를 인코딩한 것이어야 한다.
  */
-async function shrinkAndPickSmaller(
+async function pickFormat(
+  png: Blob | Promise<Blob>,
   image: ImageBitmap,
-  scale: number,
   background: [number, number, number],
 ): Promise<SlideImage> {
-  // drawImage로 크게 줄이면 Firefox와 Safari에서 글자 가장자리가 거칠어지므로
-  // createImageBitmap의 고품질 리사이즈를 쓴다.
-  const resized = await createImageBitmap(image, {
-    resizeWidth: Math.round(image.width * scale),
-    resizeHeight: Math.round(image.height * scale),
-    resizeQuality: "high",
-  });
+  const [pngBlob, jpegBlob] = await Promise.all([
+    png,
+    convertToJpeg(image, background),
+  ]);
+  const { width, height } = image;
 
-  try {
-    const { width, height } = resized;
-    const [png, jpeg] = await Promise.all([
-      drawOnCanvas(resized).convertToBlob({ type: "image/png" }),
-      convertToJpeg(resized, background),
-    ]);
-    const usePng = png.size <= jpeg.size;
-    const dataUrl = await blobToDataUrl(usePng ? png : jpeg);
-    return { dataUrl, format: usePng ? "PNG" : "JPEG", width, height };
-  } finally {
-    resized.close();
+  if (pngBlob.size * PNG_SIZE_PERCENT <= jpegBlob.size * 100) {
+    const dataUrl = await blobToDataUrl(pngBlob);
+    return { dataUrl, format: mimeToImageFormat(pngBlob.type), width, height };
   }
+
+  const dataUrl = await blobToDataUrl(jpegBlob);
+  return { dataUrl, format: "JPEG", width, height };
 }
 
 async function fetchBlob(url: string, signal?: AbortSignal): Promise<Blob> {

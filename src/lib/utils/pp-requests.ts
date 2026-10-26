@@ -34,28 +34,27 @@ export async function getFocusedPresentation(
   return findObjectId(response);
 }
 
-/** 섬네일 이미지 포맷(`thumbnail_type`). */
-export type ThumbnailType = "png" | "jpeg";
+// 섬네일은 PNG로만 받는다. JPEG로 넣을 페이지는 브라우저에서 변환한다
+// (`pdf.ts`의 `fetchSlideImage` 참고).
+const THUMBNAIL_TYPE = "png";
 
 export function getPlaylistSlideThumbUrl(
   baseUrl: string,
   id: string,
   itemIndex: number,
   cueIndex: number,
-  type: ThumbnailType,
   quality: number = 480,
 ): string {
-  return `${baseUrl}/v1/playlist/${id}/${itemIndex}/thumbnail/${cueIndex}?quality=${quality}&thumbnail_type=${type}`;
+  return `${baseUrl}/v1/playlist/${id}/${itemIndex}/thumbnail/${cueIndex}?quality=${quality}&thumbnail_type=${THUMBNAIL_TYPE}`;
 }
 
 export function getPresentationSlideThumbUrl(
   baseUrl: string,
   uuid: string,
   cueIndex: number,
-  type: ThumbnailType,
   quality: number = 480,
 ): string {
-  return `${baseUrl}/v1/presentation/${uuid}/thumbnail/${cueIndex}?quality=${quality}&thumbnail_type=${type}`;
+  return `${baseUrl}/v1/presentation/${uuid}/thumbnail/${cueIndex}?quality=${quality}&thumbnail_type=${THUMBNAIL_TYPE}`;
 }
 
 export async function getPlaylistById(
