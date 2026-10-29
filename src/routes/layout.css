@@ -3,10 +3,6 @@
 @import "shadcn-svelte/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
-@plugin "daisyui" {
-  themes: corporate --default;
-  logs: false;
-}
 
 :root {
   --background: oklch(1 0 0);

@@ -1,7 +1,8 @@
 <script lang="ts">
-  import ConnectionCard from "#lib/components/ConnectionCard.svelte";
-  import PdfOptionsCard from "#lib/components/PdfOptionsCard.svelte";
-  import SourceCard from "#lib/components/SourceCard.svelte";
+  import ConnectionSection from "#lib/components/ConnectionSection.svelte";
+  import PdfOptionsSection from "#lib/components/PdfOptionsSection.svelte";
+  import SourceSection from "#lib/components/SourceSection.svelte";
+  import { Badge } from "#lib/components/ui/badge/index.ts";
   import type { PObjectId, PPlaylistAll } from "#lib/types/pp.ts";
   import type {
     ConnectionStatus,
@@ -239,19 +240,19 @@
 <svelte:head><title>pp2pdf</title></svelte:head>
 
 <main class="mx-auto max-w-5xl p-4 sm:p-6">
-  <header class="mb-6">
+  <header class="mb-10">
     <h1 class="flex items-center gap-2 text-2xl font-bold">
       pp2pdf
-      <span class="badge badge-ghost badge-sm">beta</span>
+      <Badge variant="secondary">beta</Badge>
     </h1>
-    <p class="mt-1 text-sm text-base-content/70">
+    <p class="mt-1 text-sm text-muted-foreground">
       ProPresenter의 재생목록 또는 프레젠테이션을 PDF 파일로 변환합니다.
     </p>
   </header>
 
-  <div class="grid gap-6 lg:grid-cols-2 lg:items-start">
-    <div class="min-w-0 space-y-6">
-      <ConnectionCard
+  <div class="grid gap-12 lg:grid-cols-2 lg:items-start lg:gap-16">
+    <div class="flex min-w-0 flex-col gap-12">
+      <ConnectionSection
         bind:host
         bind:port
         status={connectionStatus}
@@ -260,7 +261,7 @@
         onconnect={handleConnect}
       />
 
-      <SourceCard
+      <SourceSection
         {connected}
         busy={sourceBusy}
         {libraries}
@@ -279,7 +280,7 @@
     </div>
 
     <div class="min-w-0 lg:sticky lg:top-6">
-      <PdfOptionsCard
+      <PdfOptionsSection
         bind:options
         selectionName={selection?.id.name}
         selectionType={selection?.type}
