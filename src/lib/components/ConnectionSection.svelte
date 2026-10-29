@@ -15,6 +15,8 @@
     /** 마지막으로 연결을 시도한 기준 URL. */
     baseUrl: string;
     error: string;
+    /** PDF 생성 중 등 연결 정보를 바꾸지 못하게 할 때 `true`. */
+    disabled: boolean;
     onconnect: () => void;
   }
 
@@ -24,6 +26,7 @@
     status,
     baseUrl,
     error,
+    disabled,
     onconnect,
   }: Props = $props();
 
@@ -47,6 +50,7 @@
           autocomplete="off"
           spellcheck="false"
           required
+          {disabled}
           bind:value={host}
         />
       </Field.Field>
@@ -59,11 +63,12 @@
           min="1"
           max="65535"
           required
+          {disabled}
           bind:value={port}
         />
       </Field.Field>
 
-      <Button type="submit" disabled={status === "connecting"}>
+      <Button type="submit" disabled={disabled || status === "connecting"}>
         {#if status === "connecting"}
           <Spinner aria-hidden="true" />
         {/if}

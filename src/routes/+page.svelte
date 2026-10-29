@@ -48,6 +48,8 @@
   let abortController: AbortController | null = null;
 
   const connected = $derived(connectionStatus === "connected");
+  // PDF를 만드는 동안에는 연결과 선택을 바꾸지 못하게 한다.
+  const generating = $derived(generation.phase !== "idle");
 
   async function handleConnect() {
     const url = makeBaseUrl(host, port);
@@ -258,6 +260,7 @@
         status={connectionStatus}
         {baseUrl}
         error={connectionError}
+        disabled={generating}
         onconnect={handleConnect}
       />
 
@@ -272,6 +275,7 @@
         bind:tab={sourceTab}
         {selection}
         error={sourceError}
+        disabled={generating}
         onlibrarychange={handleLibraryChange}
         onselect={handleSelect}
         onselectfocused={handleSelectFocused}

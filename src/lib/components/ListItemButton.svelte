@@ -5,7 +5,7 @@
    * (`pr-8` 자리)에 체크 아이콘을 둔다.
    */
   export const LIST_ITEM_CLASS =
-    "relative flex w-full items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground";
+    "relative flex w-full items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground disabled:pointer-events-none disabled:opacity-50";
 
   const SELECTED_CLASS = "bg-accent text-accent-foreground";
 </script>

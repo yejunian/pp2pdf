@@ -26,6 +26,8 @@
     tab: SourceTab;
     selection: PSelection | null;
     error: string;
+    /** PDF 생성 중 등 선택을 바꾸지 못하게 할 때 `true`. */
+    disabled: boolean;
     onlibrarychange: (id: string) => void;
     onselect: (selection: PSelection) => void;
     onselectfocused: () => void;
@@ -43,6 +45,7 @@
     tab = $bindable(),
     selection,
     error,
+    disabled,
     onlibrarychange,
     onselect,
     onselectfocused,
@@ -83,154 +86,157 @@
   }
 </script>
 
-<section class="flex flex-col gap-4">
-  <div class="flex flex-wrap items-center justify-between gap-2">
-    <h2 class="text-lg font-semibold">재생목록·프레젠테이션 선택</h2>
+<section>
+  <!-- `disabled`이면 안에 있는 버튼과 입력란을 한꺼번에 비활성화한다. -->
+  <fieldset class="flex min-w-0 flex-col gap-4" {disabled}>
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h2 class="text-lg font-semibold">재생목록·프레젠테이션 선택</h2>
 
-    <div class="flex gap-1">
-      <Button
-        variant="outline"
-        size="sm"
-        disabled={!connected || busy}
-        onclick={onselectfocused}
-      >
-        ProPresenter에서 선택한 항목
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        title="목록 다시 불러오기"
-        aria-label="목록 다시 불러오기"
-        disabled={!connected || busy}
-        onclick={onreload}
-      >
-        {#if busy}
-          <Spinner aria-hidden="true" />
-        {:else}
-          <RotateCwIcon aria-hidden="true" />
-        {/if}
-      </Button>
-    </div>
-  </div>
-
-  <div class="flex flex-col gap-3">
-    {#if !connected}
-      <p class="py-6 text-center text-sm text-muted-foreground">
-        먼저 ProPresenter에 연결하세요.
-      </p>
-    {:else}
-      <Tabs.Root bind:value={tab}>
-        <Tabs.List class="w-full">
-          <Tabs.Trigger value="library">라이브러리</Tabs.Trigger>
-          <Tabs.Trigger value="playlist">재생목록</Tabs.Trigger>
-        </Tabs.List>
-
-        <Tabs.Content value="library" class="flex flex-col gap-2">
-          <Select.Root
-            type="single"
-            items={libraryItems}
-            value={selectedLibraryId}
-            onValueChange={handleLibraryChange}
-            disabled={libraries.length === 0}
-          >
-            <Select.Trigger class="w-full" aria-label="라이브러리">
-              <Select.Value
-                placeholder={libraries.length
-                  ? "라이브러리 선택"
-                  : "라이브러리 없음"}
-              />
-            </Select.Trigger>
-            <Select.Content>
-              <Select.Group>
-                {#each libraryItems as { value, label } (value)}
-                  <Select.Item {value} {label}>{label}</Select.Item>
-                {/each}
-              </Select.Group>
-            </Select.Content>
-          </Select.Root>
-
-          {#if selectedLibraryId}
-            <Input
-              type="search"
-              placeholder="프레젠테이션 이름으로 찾기"
-              aria-label="프레젠테이션 이름으로 찾기"
-              bind:value={filter}
-            />
-
-            <div class="h-72 overflow-y-auto rounded-lg border bg-background">
-              {#if presentationsLoading}
-                <div class="flex h-full items-center justify-center">
-                  <Spinner class="size-6" aria-label="불러오는 중" />
-                </div>
-              {:else if filteredPresentations.length === 0}
-                <p class="p-4 text-center text-sm text-muted-foreground">
-                  {presentations.length
-                    ? "일치하는 프레젠테이션이 없습니다."
-                    : "프레젠테이션이 없습니다."}
-                </p>
-              {:else}
-                <ul class="p-1">
-                  {#each filteredPresentations as item (item.uuid)}
-                    <li>
-                      <ListItemButton
-                        selected={item.uuid === selectedPresentationUuid}
-                        onclick={() =>
-                          onselect({ type: "presentation", id: item })}
-                      >
-                        {item.name}
-                      </ListItemButton>
-                    </li>
-                  {/each}
-                </ul>
-              {/if}
-            </div>
-          {/if}
-        </Tabs.Content>
-
-        <Tabs.Content
-          value="playlist"
-          class="h-72 overflow-y-auto rounded-lg border bg-background"
+      <div class="flex gap-1">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!connected || busy}
+          onclick={onselectfocused}
         >
-          {#if playlists.length === 0}
-            <p class="p-4 text-center text-sm text-muted-foreground">
-              재생목록이 없습니다.
-            </p>
+          ProPresenter에서 선택한 항목
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          title="목록 다시 불러오기"
+          aria-label="목록 다시 불러오기"
+          disabled={!connected || busy}
+          onclick={onreload}
+        >
+          {#if busy}
+            <Spinner aria-hidden="true" />
           {:else}
-            <ul class="p-1">
-              <PlaylistTree
-                items={playlists}
-                selectedUuid={selectedPlaylistUuid}
-                onselect={(id) => onselect({ type: "playlist", id })}
-              />
-            </ul>
+            <RotateCwIcon aria-hidden="true" />
           {/if}
-        </Tabs.Content>
-      </Tabs.Root>
-    {/if}
-
-    {#if error}
-      <!-- 오류 내용이 여러 줄일 수 있으므로 아이콘을 첫 줄에 맞춘다. -->
-      <Marker.Root role="alert" class="items-start text-destructive">
-        <Marker.Icon class="mt-0.5"><CircleAlertIcon /></Marker.Icon>
-        <Marker.Content class="break-all whitespace-pre-line">
-          {error}
-        </Marker.Content>
-      </Marker.Root>
-    {/if}
-
-    <div class="flex min-w-0 items-center gap-2 text-sm">
-      {#if selection}
-        {#if selection.type === "playlist"}
-          <Badge class="bg-sky-100 text-sky-700">재생목록</Badge>
-        {:else}
-          <Badge class="bg-orange-100 text-orange-700">프레젠테이션</Badge>
-        {/if}
-        <span class="truncate font-medium" title={selection.id.name}>
-          {selection.id.name}
-        </span>
-      {:else}
-        <span class="text-muted-foreground">선택한 항목이 없습니다.</span>
-      {/if}
+        </Button>
+      </div>
     </div>
-  </div>
+
+    <div class="flex flex-col gap-3">
+      {#if !connected}
+        <p class="py-6 text-center text-sm text-muted-foreground">
+          먼저 ProPresenter에 연결하세요.
+        </p>
+      {:else}
+        <Tabs.Root bind:value={tab}>
+          <Tabs.List class="w-full">
+            <Tabs.Trigger value="library">라이브러리</Tabs.Trigger>
+            <Tabs.Trigger value="playlist">재생목록</Tabs.Trigger>
+          </Tabs.List>
+
+          <Tabs.Content value="library" class="flex flex-col gap-2">
+            <Select.Root
+              type="single"
+              items={libraryItems}
+              value={selectedLibraryId}
+              onValueChange={handleLibraryChange}
+              disabled={disabled || libraries.length === 0}
+            >
+              <Select.Trigger class="w-full" aria-label="라이브러리">
+                <Select.Value
+                  placeholder={libraries.length
+                    ? "라이브러리 선택"
+                    : "라이브러리 없음"}
+                />
+              </Select.Trigger>
+              <Select.Content>
+                <Select.Group>
+                  {#each libraryItems as { value, label } (value)}
+                    <Select.Item {value} {label}>{label}</Select.Item>
+                  {/each}
+                </Select.Group>
+              </Select.Content>
+            </Select.Root>
+
+            {#if selectedLibraryId}
+              <Input
+                type="search"
+                placeholder="프레젠테이션 이름으로 찾기"
+                aria-label="프레젠테이션 이름으로 찾기"
+                bind:value={filter}
+              />
+
+              <div class="h-72 overflow-y-auto rounded-lg border bg-background">
+                {#if presentationsLoading}
+                  <div class="flex h-full items-center justify-center">
+                    <Spinner class="size-6" aria-label="불러오는 중" />
+                  </div>
+                {:else if filteredPresentations.length === 0}
+                  <p class="p-4 text-center text-sm text-muted-foreground">
+                    {presentations.length
+                      ? "일치하는 프레젠테이션이 없습니다."
+                      : "프레젠테이션이 없습니다."}
+                  </p>
+                {:else}
+                  <ul class="p-1">
+                    {#each filteredPresentations as item (item.uuid)}
+                      <li>
+                        <ListItemButton
+                          selected={item.uuid === selectedPresentationUuid}
+                          onclick={() =>
+                            onselect({ type: "presentation", id: item })}
+                        >
+                          {item.name}
+                        </ListItemButton>
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
+              </div>
+            {/if}
+          </Tabs.Content>
+
+          <Tabs.Content
+            value="playlist"
+            class="h-72 overflow-y-auto rounded-lg border bg-background"
+          >
+            {#if playlists.length === 0}
+              <p class="p-4 text-center text-sm text-muted-foreground">
+                재생목록이 없습니다.
+              </p>
+            {:else}
+              <ul class="p-1">
+                <PlaylistTree
+                  items={playlists}
+                  selectedUuid={selectedPlaylistUuid}
+                  onselect={(id) => onselect({ type: "playlist", id })}
+                />
+              </ul>
+            {/if}
+          </Tabs.Content>
+        </Tabs.Root>
+      {/if}
+
+      {#if error}
+        <!-- 오류 내용이 여러 줄일 수 있으므로 아이콘을 첫 줄에 맞춘다. -->
+        <Marker.Root role="alert" class="items-start text-destructive">
+          <Marker.Icon class="mt-0.5"><CircleAlertIcon /></Marker.Icon>
+          <Marker.Content class="break-all whitespace-pre-line">
+            {error}
+          </Marker.Content>
+        </Marker.Root>
+      {/if}
+
+      <div class="flex min-w-0 items-center gap-2 text-sm">
+        {#if selection}
+          {#if selection.type === "playlist"}
+            <Badge class="bg-sky-100 text-sky-700">재생목록</Badge>
+          {:else}
+            <Badge class="bg-orange-100 text-orange-700">프레젠테이션</Badge>
+          {/if}
+          <span class="truncate font-medium" title={selection.id.name}>
+            {selection.id.name}
+          </span>
+        {:else}
+          <span class="text-muted-foreground">선택한 항목이 없습니다.</span>
+        {/if}
+      </div>
+    </div>
+  </fieldset>
 </section>

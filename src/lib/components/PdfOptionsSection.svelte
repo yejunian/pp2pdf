@@ -2,6 +2,7 @@
   import CircleAlertIcon from "@lucide/svelte/icons/circle-alert";
   import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
   import InfoIcon from "@lucide/svelte/icons/info";
+  import XIcon from "@lucide/svelte/icons/x";
   import { Button } from "#lib/components/ui/button/index.ts";
   import * as Field from "#lib/components/ui/field/index.ts";
   import { Input } from "#lib/components/ui/input/index.ts";
@@ -53,6 +54,16 @@
   };
 
   const generating = $derived(generation.phase !== "idle");
+  const generateLabel = $derived.by(() => {
+    switch (generation.phase) {
+      case "idle":
+        return "PDF 생성";
+      case "collecting":
+        return "슬라이드 목록 확인 중…";
+      case "rendering":
+        return `PDF 생성 중… (${generation.done}/${generation.total})`;
+    }
+  });
 </script>
 
 <section class="flex flex-col gap-4">
@@ -196,10 +207,32 @@
     </Field.Set>
 
     <div class="flex flex-col gap-3">
-      {#if generation.phase === "idle"}
-        <Button class="w-full" disabled={!canGenerate} onclick={ongenerate}>
-          PDF 생성
+      <div class="flex gap-2">
+        <Button
+          id="pdf-generate"
+          class="flex-1"
+          disabled={!canGenerate || generating}
+          onclick={ongenerate}
+        >
+          {#if generating}
+            <Spinner aria-hidden="true" />
+          {/if}
+          {generateLabel}
         </Button>
+        {#if generating}
+          <Button
+            variant="outline"
+            size="icon"
+            title="취소"
+            aria-label="PDF 생성 취소"
+            onclick={oncancel}
+          >
+            <XIcon aria-hidden="true" />
+          </Button>
+        {/if}
+      </div>
+
+      {#if generation.phase === "idle"}
         {#if !canGenerate}
           <p class="text-center text-sm text-muted-foreground">
             ProPresenter에 연결하고 재생목록이나 프레젠테이션을 선택하세요.
@@ -220,30 +253,12 @@
           </Marker.Root>
         {/if}
       {:else}
-        <div class="flex flex-col gap-1.5" role="status">
-          <div class="flex justify-between text-sm">
-            <span id="pdf-progress-label" class="flex items-center gap-1.5">
-              <Spinner aria-hidden="true" />
-              {generation.phase === "collecting"
-                ? "슬라이드 목록 확인 중…"
-                : "PDF 생성 중…"}
-            </span>
-            {#if generation.phase === "rendering"}
-              <span class="tabular-nums">
-                {generation.done} / {generation.total}
-              </span>
-            {/if}
-          </div>
-          <!-- 슬라이드 목록을 확인하는 동안에는 값이 없는(indeterminate) 상태로 둔다. -->
-          <Progress
-            aria-labelledby="pdf-progress-label"
-            value={generation.phase === "rendering" ? generation.done : null}
-            max={generation.phase === "rendering" ? generation.total : 100}
-          />
-        </div>
-        <Button variant="destructive" class="w-full" onclick={oncancel}>
-          취소
-        </Button>
+        <!-- 슬라이드 목록을 확인하는 동안에는 값이 없는(indeterminate) 상태로 둔다. -->
+        <Progress
+          aria-labelledby="pdf-generate"
+          value={generation.phase === "rendering" ? generation.done : null}
+          max={generation.phase === "rendering" ? generation.total : 100}
+        />
       {/if}
     </div>
   </div>
