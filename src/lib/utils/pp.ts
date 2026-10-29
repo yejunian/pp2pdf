@@ -1,10 +1,10 @@
-import type { PColor, PObjectId, PPresentation } from "$lib/types/pp";
+import type { PColor, PObjectId, PPresentation } from "#lib/types/pp.ts";
 import {
   getPlaylistById,
   getPlaylistSlideThumbUrl,
   getPresentationByUuid,
   getPresentationSlideThumbUrl,
-} from "$lib/utils/pp-requests";
+} from "#lib/utils/pp-requests.ts";
 
 /** PDF로 만들 대상. 재생목록(폴더 제외) 또는 프레젠테이션 1개. */
 export type PSelection = {

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { PObjectId, PPlaylistAll } from "$lib/types/pp";
+  import type { PObjectId, PPlaylistAll } from "#lib/types/pp.ts";
   import PlaylistTree from "./PlaylistTree.svelte";
 
   interface Props {

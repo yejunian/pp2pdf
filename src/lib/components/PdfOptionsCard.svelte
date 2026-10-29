@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { GenerationState } from "$lib/types/ui";
-  import type { PdfCompression, PdfOptions } from "$lib/utils/pdf";
-  import type { PSelection } from "$lib/utils/pp";
+  import type { GenerationState } from "#lib/types/ui.ts";
+  import type { PdfCompression, PdfOptions } from "#lib/utils/pdf.ts";
+  import type { PSelection } from "#lib/utils/pp.ts";
 
   interface Props {
     options: PdfOptions;

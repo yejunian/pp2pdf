@@ -1,19 +1,19 @@
 <script lang="ts">
-  import ConnectionCard from "$lib/components/ConnectionCard.svelte";
-  import PdfOptionsCard from "$lib/components/PdfOptionsCard.svelte";
-  import SourceCard from "$lib/components/SourceCard.svelte";
-  import type { PObjectId, PPlaylistAll } from "$lib/types/pp";
+  import ConnectionCard from "#lib/components/ConnectionCard.svelte";
+  import PdfOptionsCard from "#lib/components/PdfOptionsCard.svelte";
+  import SourceCard from "#lib/components/SourceCard.svelte";
+  import type { PObjectId, PPlaylistAll } from "#lib/types/pp.ts";
   import type {
     ConnectionStatus,
     GenerationState,
     SourceTab,
-  } from "$lib/types/ui";
+  } from "#lib/types/ui.ts";
   import {
     DEFAULT_PDF_OPTIONS,
     saveSlidesAsPdf,
     type PdfOptions,
-  } from "$lib/utils/pdf";
-  import { collectSlidePages, type PSelection } from "$lib/utils/pp";
+  } from "#lib/utils/pdf.ts";
+  import { collectSlidePages, type PSelection } from "#lib/utils/pp.ts";
   import {
     getFocusedPlaylist,
     getFocusedPresentation,
@@ -21,7 +21,7 @@
     getLibraryById,
     getPlaylistAll,
     makeBaseUrl,
-  } from "$lib/utils/pp-requests";
+  } from "#lib/utils/pp-requests.ts";
 
   // 1. ProPresenter 연결
   let host = $state("localhost");

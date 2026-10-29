@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
-import fontUrl from "$lib/assets/Freesentation-6SemiBold.ttf?url";
-import type { PColor } from "$lib/types/pp";
-import type { PdfPageSource } from "$lib/utils/pp";
+import fontUrl from "#lib/assets/Freesentation-6SemiBold.ttf?url";
+import type { PColor } from "#lib/types/pp.ts";
+import type { PdfPageSource } from "#lib/utils/pp.ts";
 
 /**
  * jsPDF 이미지 압축 수준. 무압축("NONE")은 쓰지 않는다. PNG로 넣는 페이지에만

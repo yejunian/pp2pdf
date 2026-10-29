@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { PObjectId, PPlaylistAll } from "$lib/types/pp";
-  import type { SourceTab } from "$lib/types/ui";
-  import type { PSelection } from "$lib/utils/pp";
+  import type { PObjectId, PPlaylistAll } from "#lib/types/pp.ts";
+  import type { SourceTab } from "#lib/types/ui.ts";
+  import type { PSelection } from "#lib/utils/pp.ts";
   import PlaylistTree from "./PlaylistTree.svelte";
 
   interface Props {

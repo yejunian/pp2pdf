@@ -5,8 +5,8 @@ import type {
   PPlaylist,
   PPlaylistAll,
   PPresentation,
-} from "$lib/types/pp";
-import { isNotNullObject } from "$lib/types/utils";
+} from "#lib/types/pp.ts";
+import { isNotNullObject } from "#lib/types/utils.ts";
 
 /**
  * 사용자가 입력한 주소와 포트로 API 서버의 기준 URL(`http://host:port`)을 만든다.

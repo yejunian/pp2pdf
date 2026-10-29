@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ConnectionStatus } from "$lib/types/ui";
+  import type { ConnectionStatus } from "#lib/types/ui.ts";
 
   interface Props {
     host: string;
