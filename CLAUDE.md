@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-ProPresenter의 재생목록 또는 프레젠테이션을 화면 표시용 PDF로 변환하는 SvelteKit 앱이다(Svelte 5 runes, DaisyUI, jsPDF, pnpm).
+ProPresenter의 재생목록 또는 프레젠테이션을 화면 표시용 PDF로 변환하는 SvelteKit 앱이다(Svelte 5 runes, shadcn-svelte, jsPDF, pnpm).
 
 ## 작업 원칙
 
@@ -8,6 +8,7 @@ ProPresenter의 재생목록 또는 프레젠테이션을 화면 표시용 PDF�
 - 사용자가 턴 사이에 코드를 직접 고치거나 스테이징하기도 한다. 작업을 시작할 때와 커밋하기 전에 `git branch --show-current`, `git status --short`, `git diff`를 확인한다.
   - 디스크의 현재 내용을 사용자 의도로 받아들인다. 잘못돼 보이면 되돌리지 말고 알린다.
   - "직접 수정하면서 누락된 부분을 바로잡아라"라는 요청을 받으면, 바뀐 규칙을 설명하는 문서 주석·상수 주석이 낡지 않았는지 grep으로 확인한다.
+- `src/lib/components/ui/`는 shadcn-svelte CLI가 생성한 그대로 두고 수정하지 않는다(prettier 대상에서도 제외). 모양은 사용하는 쪽에서 조합과 `class`로 맞춘다.
 - 명세에 없는 값을 임의로 정했으면 답변에서 밝힌다.
 
 ## 커밋
@@ -24,9 +25,14 @@ ProPresenter의 재생목록 또는 프레젠테이션을 화면 표시용 PDF�
 1. `pnpm exec prettier --write <파일>` → `pnpm check` → `pnpm lint`(prettier만 검사하며, Markdown도 대상이다)
 2. PDF 레이아웃은 Node 스크립트에서 `node_modules/jspdf/dist/jspdf.node.js`로 같은 호출을 재현한다. 결과는 `sips -s format png`로 PNG로 바꿔 눈으로 확인한다. 여러 쪽 PDF의 특정 쪽은 Swift PDFKit 스크립트(`swiftc`)로 렌더링한다(`pdftoppm`과 `mutool`은 없다).
 3. 브라우저 동작은 `pnpm exec vite dev`로 앱을 띄우고, 헤드리스 브라우저로 UI를 조작해 PDF를 만들어 확인한다.
+   - 다른 프로젝트의 개발 서버가 떠 있을 수 있으므로 `--port <빈 포트> --strictPort`로 띄우고, 남의 서버는 끄지 않는다.
+   - ProPresenter가 꺼져 있으면 `src/lib/types/pp.ts`에 맞춘 임시 목 서버로 UI를 확인하고, 답변에 목 서버로 확인했다고 밝힌다.
+   - bits-ui 컴포넌트(특히 `Select`)는 `element.click()`으로는 열리지 않는다. CDP `Input.dispatchMouseEvent`나 BiDi `input.performActions` 같은 실제 입력으로 조작한다.
    - Chrome: `--headless=new --remote-debugging-port`로 띄워 CDP로 조작하고, `Page.setDownloadBehavior`로 PDF를 `/tmp`에 받는다.
-   - Firefox: `--headless --remote-debugging-port`로 띄워 WebDriver BiDi로 조작한다.
+   - Firefox: `--headless --remote-debugging-port`로 띄워 WebDriver BiDi로 조작한다. `browsingContext.setViewport`는 시스템 권한이 필요하므로 창 크기는 `--window-size`로 정한다.
    - Safari 엔진: Swift로 만든 `WKWebView` 실행기로 확인한다. Safari 앱 자체는 확인하지 못한다.
+     - 화면 밖 `WKWebView`에서는 CSS 전환이 진행되지 않아 스냅샷과 `getComputedStyle`이 이전 상태에 멈춘다. `transition: none` 스타일을 주입한다.
+     - `Select`는 합성 포인터 이벤트로도 열리지 않으므로, 트리거에 포커스한 뒤 `ArrowDown` 키 이벤트로 연다. 항목 선택은 재현하지 못했다.
    - Firefox와 WebKit은 다운로드 폴더에 파일이 생기지 않도록, jsPDF를 불러오기 전에 `window.saveAs`를 바꿔 PDF를 가로챈다.
    - 끝나면 임시 프로필로 띄운 브라우저 프로세스가 남지 않았는지 확인한다.
 4. ProPresenter 응답 형식은 추측하지 말고, 서버에 읽기 전용 GET을 보내 확인한다.
@@ -34,6 +40,19 @@ ProPresenter의 재생목록 또는 프레젠테이션을 화면 표시용 PDF�
    - Windows: 사용자가 알려 주는 LAN 주소의 50001 포트(ProPresenter 21.4.2). 재부팅하면 IP가 바뀔 수 있다. LAN 요청은 샌드박스 밖에서 보내야 한다.
    - Windows 섬네일에 큰 `quality`를 요청하지 않는다. 가장 크게 렌더링한 이미지가 캐시에 남아, ProPresenter를 다시 시작할 때까지 같은 슬라이드의 응답이 커진다.
 5. 처리 시간을 비교할 때는 ProPresenter의 렌더링 캐시를 고려한다. 모든 방식을 캐시가 데워진 상태에서 재거나, 요청한 적 없는 슬라이드에 방식을 번갈아 배정한다.
+
+## UI (`src/routes/+page.svelte`, `src/lib/components/`)
+
+- 사용자가 정한 규칙이므로 되돌리지 않는다.
+  - 화면은 카드 없이 `<section>`과 `<h2>`로 나눈 세 영역(`ConnectionSection`, `SourceSection`, `PdfOptionsSection`)이다. 박스가 겹쳐 보이지 않도록 영역 사이는 간격으로만 구분한다.
+  - Tailwind arbitrary value(`[...]`)는 가능한 한 피한다.
+  - 상태·결과 메시지는 `Alert` 대신 `Marker`로 보여 주고, 오류만 `text-destructive`로 빨갛게 한다.
+  - 선택 UI는 `NativeSelect` 대신 `Select`를 쓴다.
+  - 라이브러리·재생목록 목록 항목(`ListItemButton`)은 `Select.Item`처럼 보이게 한다. 선택한 항목은 마우스를 올린 항목과 같은 배경을 칠하고 오른쪽에 체크 아이콘을 둔다.
+  - PDF를 만드는 동안에는 연결·선택 영역과 생성 옵션을 비활성화한다. 생성 버튼에는 단계별 레이블과 스피너를 넣고, 옆에 아이콘만 있는 취소 버튼(`destructive` 배리언트 아님)을, 아래에 진행 바를 둔다. 끝나면 원래대로 되돌린다.
+- `Select`는 공식 문서 예제처럼 `Select.Root`에 `items`를 넘기고(닫힌 상태의 `Select.Value` 표시에 필요), 항목을 `Select.Group`으로 감싼다. nova 스타일은 항목 둘레의 여백이 `Select.Group`에 있다. 값은 문자열만 다루므로 숫자 옵션은 문자열로 바꿔 넘긴다.
+- `ui/`를 prettier에서 제외한 이유: prettier-plugin-tailwindcss가 클래스 순서를 바꾸면 `cn()`의 충돌 해소 결과가 달라진다(예: `leading-snug text-sm`).
+- 컴포넌트는 `pnpm exec shadcn-svelte add <이름>`으로 추가한다. 이미 있는 파일을 다시 받을 때는 대화형 질문이 뜨므로 `--yes --overwrite`를 붙인다. 쓰지 않게 된 컴포넌트는 지운다.
 
 ## PDF 레이아웃 (`src/lib/utils/pdf.ts`의 `saveSlidesAsPdf`)
 
