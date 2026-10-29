@@ -7,3 +7,6 @@ bun.lockb
 
 # Miscellaneous
 /static/
+
+# shadcn-svelte CLI가 생성한 컴포넌트는 생성된 그대로 둔다.
+/src/lib/components/ui/
