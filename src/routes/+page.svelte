@@ -21,7 +21,7 @@
   } from "#lib/utils/pp.ts";
   import {
     getLibraryAll,
-    getLibraryById,
+    getLibraryByName,
     getPlaylistAll,
     makeBaseUrl,
   } from "#lib/utils/pp-requests.ts";
@@ -36,13 +36,14 @@
   // 다른 주소에 처음 연결했는지 판단하고, 같은 주소로 다시 연결할 때 선택을
   // 되살리는 데 쓴다.
   let lastConnectedUrl = "";
-  let lastLibraryId = "";
+  let lastLibraryName = "";
   let lastSelection: PSelection | null = null;
 
   // 2. 재생목록·프레젠테이션 선택
   let libraries: PObjectId[] = $state([]);
   let playlists: PPlaylistAll = $state([]);
-  let selectedLibraryId = $state("");
+  // 라이브러리는 UUID 대신 이름으로 구분한다(`getLibraryByName` 참고).
+  let selectedLibraryName = $state("");
   let presentations: PObjectId[] = $state([]);
   let presentationsLoading = $state(false);
   let sourceTab = $state<SourceTab>("library");
@@ -69,7 +70,7 @@
     // 연결에 실패한 상태에서는 화면의 선택이 이미 지워졌으므로 기억해 둔 선택을
     // 덮어쓰지 않는다.
     if (connectionStatus === "connected") {
-      lastLibraryId = selectedLibraryId;
+      lastLibraryName = selectedLibraryName;
       lastSelection = selection;
     }
 
@@ -79,7 +80,7 @@
     sourceError = "";
     libraries = [];
     playlists = [];
-    selectedLibraryId = "";
+    selectedLibraryName = "";
     presentations = [];
     selection = null;
 
@@ -109,32 +110,32 @@
     }
   }
 
-  async function loadPresentations(libraryId: string) {
+  async function loadPresentations(libraryName: string) {
     presentationsLoading = true;
     sourceError = "";
 
     try {
-      const library = await getLibraryById(baseUrl, libraryId);
+      const library = await getLibraryByName(baseUrl, libraryName);
       // 기다리는 동안 다른 라이브러리를 선택했으면 결과를 버린다.
-      if (selectedLibraryId === libraryId) {
+      if (selectedLibraryName === libraryName) {
         presentations = library.items;
       }
     } catch (error) {
-      if (selectedLibraryId === libraryId) {
+      if (selectedLibraryName === libraryName) {
         presentations = [];
         sourceError = getErrorMessage(error);
       }
     } finally {
-      if (selectedLibraryId === libraryId) {
+      if (selectedLibraryName === libraryName) {
         presentationsLoading = false;
       }
     }
   }
 
-  function handleLibraryChange(libraryId: string) {
-    selectedLibraryId = libraryId;
+  function handleLibraryChange(libraryName: string) {
+    selectedLibraryName = libraryName;
     presentations = [];
-    loadPresentations(libraryId);
+    loadPresentations(libraryName);
   }
 
   function handleSelect(newSelection: PSelection) {
@@ -142,13 +143,16 @@
   }
 
   /**
-   * 같은 주소로 다시 연결했을 때 직전 선택을 되살린다. 라이브러리는 아직 있을
-   * 때만 되살린다(ProPresenter를 다시 시작하면 라이브러리 UUID가 바뀐다).
-   * 항목은 `handleReload`와 마찬가지로 아직 있는지 확인하지 않는다.
+   * 같은 주소로 다시 연결했을 때 직전 선택을 되살린다. 라이브러리는 같은 이름의
+   * 라이브러리가 아직 있을 때만 되살린다. 항목은 `handleReload`와 마찬가지로
+   * 아직 있는지 확인하지 않는다.
    */
   function restoreLastSelection() {
-    if (libraries.some((library) => library.uuid === lastLibraryId)) {
-      handleLibraryChange(lastLibraryId);
+    if (
+      lastLibraryName &&
+      libraries.some((library) => library.name === lastLibraryName)
+    ) {
+      handleLibraryChange(lastLibraryName);
     }
 
     selection = lastSelection;
@@ -190,10 +194,10 @@
       ]);
 
       if (
-        selectedLibraryId &&
-        !libraries.some((library) => library.uuid === selectedLibraryId)
+        selectedLibraryName &&
+        !libraries.some((library) => library.name === selectedLibraryName)
       ) {
-        selectedLibraryId = "";
+        selectedLibraryName = "";
         presentations = [];
       }
     } catch (error) {
@@ -202,8 +206,8 @@
       sourceBusy = false;
     }
 
-    if (selectedLibraryId) {
-      await loadPresentations(selectedLibraryId);
+    if (selectedLibraryName) {
+      await loadPresentations(selectedLibraryName);
     }
   }
 
@@ -311,7 +315,7 @@
         busy={sourceBusy}
         {libraries}
         {playlists}
-        {selectedLibraryId}
+        {selectedLibraryName}
         {presentations}
         {presentationsLoading}
         bind:tab={sourceTab}
