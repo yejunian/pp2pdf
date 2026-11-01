@@ -14,10 +14,12 @@
     saveSlidesAsPdf,
     type PdfOptions,
   } from "#lib/utils/pdf.ts";
-  import { collectSlidePages, type PSelection } from "#lib/utils/pp.ts";
   import {
-    getFocusedPlaylist,
-    getFocusedPresentation,
+    collectSlidePages,
+    getFocusedSelection,
+    type PSelection,
+  } from "#lib/utils/pp.ts";
+  import {
     getLibraryAll,
     getLibraryById,
     getPlaylistAll,
@@ -30,6 +32,8 @@
   let connectionStatus = $state<ConnectionStatus>("idle");
   let baseUrl = $state("");
   let connectionError = $state("");
+  // 마지막으로 연결에 성공한 기준 URL. 다른 주소에 처음 연결했는지 판단하는 데 쓴다.
+  let lastConnectedUrl = "";
 
   // 2. 재생목록·프레젠테이션 선택
   let libraries: PObjectId[] = $state([]);
@@ -53,6 +57,9 @@
 
   async function handleConnect() {
     const url = makeBaseUrl(host, port);
+    // 페이지를 연 뒤 처음 연결하거나 마지막으로 연결한 곳과 다른 주소·포트에
+    // 연결하면, ProPresenter에서 선택한 항목을 자동으로 선택한다.
+    const isNewAddress = url !== lastConnectedUrl;
 
     baseUrl = url;
     connectionStatus = "connecting";
@@ -65,11 +72,21 @@
     selection = null;
 
     try {
-      [libraries, playlists] = await Promise.all([
+      const [newLibraries, newPlaylists, focused] = await Promise.all([
         getLibraryAll(url),
         getPlaylistAll(url),
+        // 자동 선택은 실패해도 연결 결과에 영향을 주지 않고 오류도 표시하지 않는다.
+        isNewAddress ? getFocusedSelection(url).catch(() => null) : null,
       ]);
+
+      libraries = newLibraries;
+      playlists = newPlaylists;
+      lastConnectedUrl = url;
       connectionStatus = "connected";
+
+      if (focused) {
+        selectFocused(focused);
+      }
     } catch (error) {
       connectionStatus = "failed";
       connectionError = getErrorMessage(error);
@@ -108,25 +125,21 @@
     selection = newSelection;
   }
 
+  /** ProPresenter에서 선택한 항목을 선택하고, 그 항목의 종류에 맞는 탭을 연다. */
+  function selectFocused(focused: PSelection) {
+    sourceTab = focused.type === "playlist" ? "playlist" : "library";
+    handleSelect(focused);
+  }
+
   async function handleSelectFocused() {
     sourceBusy = true;
     sourceError = "";
 
     try {
-      const focusedPlaylist = await getFocusedPlaylist(baseUrl);
+      const focused = await getFocusedSelection(baseUrl);
 
-      if (focusedPlaylist.playlist) {
-        sourceTab = "playlist";
-        handleSelect({ type: "playlist", id: focusedPlaylist.playlist });
-        return;
-      }
-
-      // 재생목록 대신 단일 프레젠테이션이 선택된 경우
-      const focusedPresentation = await getFocusedPresentation(baseUrl);
-
-      if (focusedPresentation) {
-        sourceTab = "library";
-        handleSelect({ type: "presentation", id: focusedPresentation });
+      if (focused) {
+        selectFocused(focused);
       } else {
         sourceError = "ProPresenter에서 선택한 항목을 찾지 못했습니다.";
       }

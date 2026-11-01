@@ -1,5 +1,7 @@
 import type { PColor, PObjectId, PPresentation } from "#lib/types/pp.ts";
 import {
+  getFocusedPlaylist,
+  getFocusedPresentation,
   getPlaylistById,
   getPlaylistSlideThumbUrl,
   getPresentationByUuid,
@@ -102,6 +104,27 @@ export function getArrangementCues(
   }
 
   return cues;
+}
+
+/**
+ * ProPresenter에서 선택한 재생목록을 찾고, 없으면 선택한 프레젠테이션을 찾는다.
+ * 둘 다 없으면 `null`을 반환한다.
+ */
+export async function getFocusedSelection(
+  baseUrl: string,
+): Promise<PSelection | null> {
+  const focusedPlaylist = await getFocusedPlaylist(baseUrl);
+
+  if (focusedPlaylist.playlist) {
+    return { type: "playlist", id: focusedPlaylist.playlist };
+  }
+
+  // 재생목록 대신 단일 프레젠테이션이 선택된 경우
+  const focusedPresentation = await getFocusedPresentation(baseUrl);
+
+  return focusedPresentation
+    ? { type: "presentation", id: focusedPresentation }
+    : null;
 }
 
 /** 선택한 항목의 슬라이드를 PDF 페이지 순서대로 모은다. */
