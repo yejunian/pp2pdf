@@ -32,8 +32,12 @@
   let connectionStatus = $state<ConnectionStatus>("idle");
   let baseUrl = $state("");
   let connectionError = $state("");
-  // 마지막으로 연결에 성공한 기준 URL. 다른 주소에 처음 연결했는지 판단하는 데 쓴다.
+  // 마지막으로 연결에 성공한 기준 URL과, 그 연결에서 선택했던 라이브러리·항목.
+  // 다른 주소에 처음 연결했는지 판단하고, 같은 주소로 다시 연결할 때 선택을
+  // 되살리는 데 쓴다.
   let lastConnectedUrl = "";
+  let lastLibraryId = "";
+  let lastSelection: PSelection | null = null;
 
   // 2. 재생목록·프레젠테이션 선택
   let libraries: PObjectId[] = $state([]);
@@ -59,7 +63,15 @@
     const url = makeBaseUrl(host, port);
     // 페이지를 연 뒤 처음 연결하거나 마지막으로 연결한 곳과 다른 주소·포트에
     // 연결하면, ProPresenter에서 선택한 항목을 자동으로 선택한다.
+    // 같은 주소로 다시 연결하면 직전에 선택했던 라이브러리와 항목을 되살린다.
     const isNewAddress = url !== lastConnectedUrl;
+
+    // 연결에 실패한 상태에서는 화면의 선택이 이미 지워졌으므로 기억해 둔 선택을
+    // 덮어쓰지 않는다.
+    if (connectionStatus === "connected") {
+      lastLibraryId = selectedLibraryId;
+      lastSelection = selection;
+    }
 
     baseUrl = url;
     connectionStatus = "connecting";
@@ -84,8 +96,12 @@
       lastConnectedUrl = url;
       connectionStatus = "connected";
 
-      if (focused) {
-        selectFocused(focused);
+      if (isNewAddress) {
+        if (focused) {
+          selectFocused(focused);
+        }
+      } else {
+        restoreLastSelection();
       }
     } catch (error) {
       connectionStatus = "failed";
@@ -123,6 +139,19 @@
 
   function handleSelect(newSelection: PSelection) {
     selection = newSelection;
+  }
+
+  /**
+   * 같은 주소로 다시 연결했을 때 직전 선택을 되살린다. 라이브러리는 아직 있을
+   * 때만 되살린다(ProPresenter를 다시 시작하면 라이브러리 UUID가 바뀐다).
+   * 항목은 `handleReload`와 마찬가지로 아직 있는지 확인하지 않는다.
+   */
+  function restoreLastSelection() {
+    if (libraries.some((library) => library.uuid === lastLibraryId)) {
+      handleLibraryChange(lastLibraryId);
+    }
+
+    selection = lastSelection;
   }
 
   /** ProPresenter에서 선택한 항목을 선택하고, 그 항목의 종류에 맞는 탭을 연다. */
