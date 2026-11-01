@@ -20,7 +20,7 @@
     busy: boolean;
     libraries: PObjectId[];
     playlists: PPlaylistAll;
-    selectedLibraryId: string;
+    selectedLibraryName: string;
     presentations: PObjectId[];
     presentationsLoading: boolean;
     tab: SourceTab;
@@ -28,7 +28,7 @@
     error: string;
     /** PDF 생성 중 등 선택을 바꾸지 못하게 할 때 `true`. */
     disabled: boolean;
-    onlibrarychange: (id: string) => void;
+    onlibrarychange: (name: string) => void;
     onselect: (selection: PSelection) => void;
     onselectfocused: () => void;
     onreload: () => void;
@@ -39,7 +39,7 @@
     busy,
     libraries,
     playlists,
-    selectedLibraryId,
+    selectedLibraryName,
     presentations,
     presentationsLoading,
     tab = $bindable(),
@@ -72,17 +72,17 @@
 
   // `Select.Value`가 닫힌 상태에서도 선택한 이름을 표시하려면 `items`가 필요하다.
   const libraryItems = $derived(
-    libraries.map((library) => ({ value: library.uuid, label: library.name })),
+    libraries.map((library) => ({ value: library.name, label: library.name })),
   );
 
-  function handleLibraryChange(libraryId: string) {
+  function handleLibraryChange(libraryName: string) {
     // 이미 선택한 라이브러리를 다시 고르면 목록을 새로 불러오지 않는다.
-    if (libraryId === selectedLibraryId) {
+    if (libraryName === selectedLibraryName) {
       return;
     }
 
     filter = "";
-    onlibrarychange(libraryId);
+    onlibrarychange(libraryName);
   }
 </script>
 
@@ -134,7 +134,7 @@
             <Select.Root
               type="single"
               items={libraryItems}
-              value={selectedLibraryId}
+              value={selectedLibraryName}
               onValueChange={handleLibraryChange}
               disabled={disabled || libraries.length === 0}
             >
@@ -154,7 +154,7 @@
               </Select.Content>
             </Select.Root>
 
-            {#if selectedLibraryId}
+            {#if selectedLibraryName}
               <Input
                 type="search"
                 placeholder="프레젠테이션 이름으로 찾기"

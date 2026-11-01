@@ -14,12 +14,14 @@
     saveSlidesAsPdf,
     type PdfOptions,
   } from "#lib/utils/pdf.ts";
-  import { collectSlidePages, type PSelection } from "#lib/utils/pp.ts";
   import {
-    getFocusedPlaylist,
-    getFocusedPresentation,
+    collectSlidePages,
+    getFocusedSelection,
+    type PSelection,
+  } from "#lib/utils/pp.ts";
+  import {
     getLibraryAll,
-    getLibraryById,
+    getLibraryByName,
     getPlaylistAll,
     makeBaseUrl,
   } from "#lib/utils/pp-requests.ts";
@@ -30,11 +32,18 @@
   let connectionStatus = $state<ConnectionStatus>("idle");
   let baseUrl = $state("");
   let connectionError = $state("");
+  // 마지막으로 연결에 성공한 기준 URL과, 그 연결에서 선택했던 라이브러리·항목.
+  // 다른 주소에 처음 연결했는지 판단하고, 같은 주소로 다시 연결할 때 선택을
+  // 되살리는 데 쓴다.
+  let lastConnectedUrl = "";
+  let lastLibraryName = "";
+  let lastSelection: PSelection | null = null;
 
   // 2. 재생목록·프레젠테이션 선택
   let libraries: PObjectId[] = $state([]);
   let playlists: PPlaylistAll = $state([]);
-  let selectedLibraryId = $state("");
+  // 라이브러리는 UUID 대신 이름으로 구분한다(`getLibraryByName` 참고).
+  let selectedLibraryName = $state("");
   let presentations: PObjectId[] = $state([]);
   let presentationsLoading = $state(false);
   let sourceTab = $state<SourceTab>("library");
@@ -53,6 +62,17 @@
 
   async function handleConnect() {
     const url = makeBaseUrl(host, port);
+    // 페이지를 연 뒤 처음 연결하거나 마지막으로 연결한 곳과 다른 주소·포트에
+    // 연결하면, ProPresenter에서 선택한 항목을 자동으로 선택한다.
+    // 같은 주소로 다시 연결하면 직전에 선택했던 라이브러리와 항목을 되살린다.
+    const isNewAddress = url !== lastConnectedUrl;
+
+    // 연결에 실패한 상태에서는 화면의 선택이 이미 지워졌으므로 기억해 둔 선택을
+    // 덮어쓰지 않는다.
+    if (connectionStatus === "connected") {
+      lastLibraryName = selectedLibraryName;
+      lastSelection = selection;
+    }
 
     baseUrl = url;
     connectionStatus = "connecting";
@@ -60,52 +80,88 @@
     sourceError = "";
     libraries = [];
     playlists = [];
-    selectedLibraryId = "";
+    selectedLibraryName = "";
     presentations = [];
     selection = null;
 
     try {
-      [libraries, playlists] = await Promise.all([
+      const [newLibraries, newPlaylists, focused] = await Promise.all([
         getLibraryAll(url),
         getPlaylistAll(url),
+        // 자동 선택은 실패해도 연결 결과에 영향을 주지 않고 오류도 표시하지 않는다.
+        isNewAddress ? getFocusedSelection(url).catch(() => null) : null,
       ]);
+
+      libraries = newLibraries;
+      playlists = newPlaylists;
+      lastConnectedUrl = url;
       connectionStatus = "connected";
+
+      if (isNewAddress) {
+        if (focused) {
+          selectFocused(focused);
+        }
+      } else {
+        restoreLastSelection();
+      }
     } catch (error) {
       connectionStatus = "failed";
       connectionError = getErrorMessage(error);
     }
   }
 
-  async function loadPresentations(libraryId: string) {
+  async function loadPresentations(libraryName: string) {
     presentationsLoading = true;
     sourceError = "";
 
     try {
-      const library = await getLibraryById(baseUrl, libraryId);
+      const library = await getLibraryByName(baseUrl, libraryName);
       // 기다리는 동안 다른 라이브러리를 선택했으면 결과를 버린다.
-      if (selectedLibraryId === libraryId) {
+      if (selectedLibraryName === libraryName) {
         presentations = library.items;
       }
     } catch (error) {
-      if (selectedLibraryId === libraryId) {
+      if (selectedLibraryName === libraryName) {
         presentations = [];
         sourceError = getErrorMessage(error);
       }
     } finally {
-      if (selectedLibraryId === libraryId) {
+      if (selectedLibraryName === libraryName) {
         presentationsLoading = false;
       }
     }
   }
 
-  function handleLibraryChange(libraryId: string) {
-    selectedLibraryId = libraryId;
+  function handleLibraryChange(libraryName: string) {
+    selectedLibraryName = libraryName;
     presentations = [];
-    loadPresentations(libraryId);
+    loadPresentations(libraryName);
   }
 
   function handleSelect(newSelection: PSelection) {
     selection = newSelection;
+  }
+
+  /**
+   * 같은 주소로 다시 연결했을 때 직전 선택을 되살린다. 라이브러리는 같은 이름의
+   * 라이브러리가 아직 있을 때만 되살린다. 항목은 `handleReload`와 마찬가지로
+   * 아직 있는지 확인하지 않는다.
+   */
+  function restoreLastSelection() {
+    if (
+      lastLibraryName &&
+      libraries.some((library) => library.name === lastLibraryName)
+    ) {
+      handleLibraryChange(lastLibraryName);
+    }
+
+    selection = lastSelection;
+  }
+
+  /** ProPresenter에서 선택한 항목을 선택하고, 그 항목의 종류에 맞는 탭을 연다. */
+  function selectFocused(focused: PSelection) {
+    sourceTab = focused.type === "playlist" ? "playlist" : "library";
+    handleSelect(focused);
   }
 
   async function handleSelectFocused() {
@@ -113,20 +169,10 @@
     sourceError = "";
 
     try {
-      const focusedPlaylist = await getFocusedPlaylist(baseUrl);
+      const focused = await getFocusedSelection(baseUrl);
 
-      if (focusedPlaylist.playlist) {
-        sourceTab = "playlist";
-        handleSelect({ type: "playlist", id: focusedPlaylist.playlist });
-        return;
-      }
-
-      // 재생목록 대신 단일 프레젠테이션이 선택된 경우
-      const focusedPresentation = await getFocusedPresentation(baseUrl);
-
-      if (focusedPresentation) {
-        sourceTab = "library";
-        handleSelect({ type: "presentation", id: focusedPresentation });
+      if (focused) {
+        selectFocused(focused);
       } else {
         sourceError = "ProPresenter에서 선택한 항목을 찾지 못했습니다.";
       }
@@ -148,10 +194,10 @@
       ]);
 
       if (
-        selectedLibraryId &&
-        !libraries.some((library) => library.uuid === selectedLibraryId)
+        selectedLibraryName &&
+        !libraries.some((library) => library.name === selectedLibraryName)
       ) {
-        selectedLibraryId = "";
+        selectedLibraryName = "";
         presentations = [];
       }
     } catch (error) {
@@ -160,8 +206,8 @@
       sourceBusy = false;
     }
 
-    if (selectedLibraryId) {
-      await loadPresentations(selectedLibraryId);
+    if (selectedLibraryName) {
+      await loadPresentations(selectedLibraryName);
     }
   }
 
@@ -269,7 +315,7 @@
         busy={sourceBusy}
         {libraries}
         {playlists}
-        {selectedLibraryId}
+        {selectedLibraryName}
         {presentations}
         {presentationsLoading}
         bind:tab={sourceTab}

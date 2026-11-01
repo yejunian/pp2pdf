@@ -81,11 +81,15 @@ export async function getLibraryAll(baseUrl: string): Promise<PObjectId[]> {
   return await request(`${baseUrl}/v1/libraries`);
 }
 
-export async function getLibraryById(
+/**
+ * 라이브러리를 이름으로 찾아 프레젠테이션 목록을 받는다.
+ * 서버의 이름과 일치하도록, 이름을 NFC/NFD 어떤 형태로 받든 바꾸지 않고 그대로 보낸다.
+ */
+export async function getLibraryByName(
   baseUrl: string,
-  id: string,
+  name: string,
 ): Promise<PLibrary> {
-  return await request(`${baseUrl}/v1/library/${id}`);
+  return await request(`${baseUrl}/v1/library/${encodeURIComponent(name)}`);
 }
 
 export async function request(url: RequestInfo | URL, signal?: AbortSignal) {
