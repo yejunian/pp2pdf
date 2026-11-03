@@ -224,21 +224,33 @@
       "pp2pdf"
     ).normalize("NFC");
     const fileName = `${toSafeFileName(title)}.pdf`;
-    const { imageSize, compression, backgroundColor, showGroupsAndLabels } =
-      options;
+    const {
+      imageSize,
+      compression,
+      backgroundColor,
+      showGroupsAndLabels,
+      includeDisabledSlides,
+      dimDisabledSlides,
+      strikeDisabledSlides,
+    } = options;
 
     abortController = controller;
     generation = { phase: "collecting" };
 
     try {
-      const pages = await collectSlidePages(
+      const slidePages = await collectSlidePages(
         baseUrl,
         selection,
         imageSize,
         signal,
       );
+      // 비활성화된 슬라이드를 빼도 다른 페이지의 번호는 그대로 두므로, 뺀
+      // 슬라이드의 번호는 건너뛴다.
+      const pages = includeDisabledSlides
+        ? slidePages
+        : slidePages.filter((page) => page.enabled);
 
-      // TODO: 헤더 페이지, 비활성 슬라이드 옵션 반영
+      // TODO: 헤더 페이지 옵션 반영
       await saveSlidesAsPdf(pages, {
         fileName,
         title,
@@ -247,6 +259,8 @@
         backgroundColor,
         showPresentationName: selection.type === "playlist",
         showGroupsAndLabels,
+        dimDisabledSlides,
+        strikeDisabledSlides,
         signal,
         onProgress: (done, total) => {
           generation = { phase: "rendering", done, total };

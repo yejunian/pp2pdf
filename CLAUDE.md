@@ -48,11 +48,14 @@ ProPresenter의 재생목록 또는 프레젠테이션을 화면 표시용 PDF�
   - Tailwind arbitrary value(`[...]`)는 가능한 한 피한다.
   - 상태·결과 메시지는 `Alert` 대신 `Marker`로 보여 주고, 오류만 `text-destructive`로 빨갛게 한다.
   - 선택 UI는 `NativeSelect` 대신 `Select`를 쓴다.
+  - 켜고 끄는 옵션은 `Switch` 대신 `Checkbox`를 쓴다.
+  - 비활성화된 슬라이드 옵션은 "비활성화된 슬라이드 포함" 아래에 "흐리게"와 "사선 표시"를 들여 써서 두고, 그 아래에 선택한 조합의 설명을 표시한다. 상위를 끄면 하위 항목은 체크 상태를 유지한 채 비활성화한다.
   - 라이브러리·재생목록 목록 항목(`ListItemButton`)은 `Select.Item`처럼 보이게 한다. 선택한 항목은 마우스를 올린 항목과 같은 배경을 칠하고 오른쪽에 체크 아이콘을 둔다.
   - PDF를 만드는 동안에는 연결·선택 영역과 생성 옵션을 비활성화한다. 생성 버튼에는 단계별 레이블과 스피너를 넣고, 옆에 아이콘만 있는 취소 버튼(`destructive` 배리언트 아님)을, 아래에 진행 바를 둔다. 끝나면 원래대로 되돌린다.
 - `Select`는 공식 문서 예제처럼 `Select.Root`에 `items`를 넘기고(닫힌 상태의 `Select.Value` 표시에 필요), 항목을 `Select.Group`으로 감싼다. nova 스타일은 항목 둘레의 여백이 `Select.Group`에 있다. 값은 문자열만 다루므로 숫자 옵션은 문자열로 바꿔 넘긴다.
 - `ui/`를 prettier에서 제외한 이유: prettier-plugin-tailwindcss가 클래스 순서를 바꾸면 `cn()`의 충돌 해소 결과가 달라진다(예: `leading-snug text-sm`).
-- 컴포넌트는 `pnpm exec shadcn-svelte add <이름>`으로 추가한다. 이미 있는 파일을 다시 받을 때는 대화형 질문이 뜨므로 `--yes --overwrite`를 붙인다. 쓰지 않게 된 컴포넌트는 지운다.
+- 컴포넌트는 `pnpm exec shadcn-svelte add <이름> --yes`로 추가한다(새로 추가할 때도 설치 확인 질문이 뜬다). 이미 있는 파일을 다시 받을 때는 `--overwrite`도 붙인다. 쓰지 않게 된 컴포넌트는 지운다.
+  - CLI가 `@lucide/svelte` 같은 의존성 버전을 올리기도 하므로 `package.json`과 `pnpm-lock.yaml` 변경을 확인한다.
 
 ## PDF 레이아웃 (`src/lib/utils/pdf.ts`의 `saveSlidesAsPdf`)
 
@@ -67,7 +70,17 @@ ProPresenter의 재생목록 또는 프레젠테이션을 화면 표시용 PDF�
   - padding은 `ceil(slideWidth / 160)`을 짝수로 올림한 값이다.
   - 둘째 줄의 글자 크기와 줄 높이는 첫 줄의 80%이다. 줄 높이만 소수점을 올림한다.
   - 부동소수점 오차를 피하려고 배율은 정수 백분율(`LINE_SCALE_PERCENTS`)로 두고 `(값 * percent) / 100` 순서로 계산한다.
-- 재생목록 헤더 페이지와 비활성 슬라이드 처리는 아직 구현하지 않았고, UI에서 임시로 비활성화해 두었다.
+- 재생목록 헤더 페이지는 아직 구현하지 않았고, UI에서 임시로 비활성화해 두었다.
+
+## 비활성화된 슬라이드 (`src/lib/utils/pdf.ts`의 `drawDisabledSlideMarks`)
+
+- 사용자가 정한 규칙이므로 되돌리지 않는다.
+  - 포함하지 않으면 PDF에서 빼되 다른 페이지의 번호는 그대로 두어, 뺀 슬라이드의 번호를 건너뛴다(3장 중 2번째가 비활성이면 `1/3`, `3/3`). 페이지는 `+page.svelte`에서 거른다.
+  - 흐리게: 이미지와 같은 크기의 흰색 사각형을 불투명도 50%로 덮는다. 이미지 자체를 반투명하게 그리면 투명 영역이 대부분인 슬라이드는 비활성 여부를 알아보기 어렵기 때문이다.
+  - 사선 표시: 이미지 왼쪽 위에서 오른쪽 아래로(`\`) 긋고, 양 끝은 이미지 모서리에서 가로·세로 각각 `padding * 4`만큼 안쪽이다. 라운드 캡으로, 검은색 선(굵기 `padding * 3`, 불투명도 50%)을 먼저, 흰색 선(굵기 `padding`)을 나중에 긋는다.
+  - 둘 다 켜면 흐림 위에 사선을 그어서 사선은 흐려지지 않는다.
+  - 기본값은 포함·흐리게·사선 표시 모두 켬이다.
+- 투명도는 jsPDF `GState`로 주고 `saveGraphicsState`/`restoreGraphicsState`로 감싼다. `restoreGraphicsState`는 jsPDF가 기억하는 선 끝 모양을 되돌리지 않아 다음 페이지가 그 값으로 시작하므로, 사선을 그은 뒤 `butt`로 되돌린다.
 
 ## 슬라이드 이미지 (`src/lib/utils/pdf.ts`의 `fetchSlideImage`)
 
@@ -97,5 +110,6 @@ ProPresenter의 재생목록 또는 프레젠테이션을 화면 표시용 PDF�
   - Windows PNG는 투명 영역이 있는 RGBA(straight alpha)이고, JPEG는 IJG 표준 테이블 품질 90이다.
   - Mac은 슬라이드를 처음 렌더링할 때만 약 50ms가 더 걸리고, 이후에는 포맷·크기와 관계없이 캐시를 쓴다. PNG와 JPEG를 동시에 요청해도 겹쳐 처리하지 못한다. Windows는 이런 차이가 거의 없다.
 - 라이브러리 UUID는 ProPresenter를 다시 시작하면 바뀐다(재생목록 UUID는 그대로다).
+- 슬라이드의 활성 여부는 프레젠테이션 응답의 `groups[].slides[].enabled`로 온다. 비활성 슬라이드의 섬네일도 일반 슬라이드와 똑같이 그려 준다(Mac 21.4에서 확인, Windows는 확인하지 않음).
 - 그룹 색상 `PColor`는 0~1 실수이므로 ×255로 변환한다(Windows 응답으로 확인). 색이 없는 그룹은 `null`로 온다.
 - macOS에서는 이름이 NFD로 올 수 있으므로 `normalize("NFC")` 한 뒤 비교하고 출력한다.

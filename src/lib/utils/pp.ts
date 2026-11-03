@@ -25,9 +25,14 @@ export type PdfPageSource = {
   groupName?: string;
   groupColor?: PColor;
   label?: string;
+  /** ProPresenter에서 비활성화하지 않은 슬라이드면 true. */
+  enabled: boolean;
 };
 
-type PCue = Pick<PdfPageSource, "groupName" | "groupColor" | "label">;
+type PCue = Pick<
+  PdfPageSource,
+  "groupName" | "groupColor" | "label" | "enabled"
+>;
 
 const defaultGroupNames = new Set(["", "group", "그룹"]);
 
@@ -68,10 +73,11 @@ export function getArrangementLength(
 }
 
 /**
- * 정렬의 큐 순서대로 슬라이드 그룹·라벨 정보를 나열한다.
+ * 정렬의 큐 순서대로 슬라이드 그룹·라벨과 활성 여부를 나열한다.
  *
  * 나열한 개수가 정렬의 길이와 맞지 않으면 섬네일과 어긋날 수 있으므로,
- * 그룹·라벨 정보가 없는 큐로 채워서 반환한다.
+ * 그룹·라벨 정보가 없는 큐로 채워서 반환한다. 이때 활성 여부도 알 수 없으므로
+ * 모두 활성 슬라이드로 본다.
  */
 export function getArrangementCues(
   presentation: PPresentation,
@@ -96,11 +102,12 @@ export function getArrangementCues(
       groupColor: group.color,
       groupName,
       label: slide.label.normalize("NFC"),
+      enabled: slide.enabled,
     }));
   });
 
   if (cues.length !== totalCues) {
-    return Array.from({ length: totalCues }, (): PCue => ({}));
+    return Array.from({ length: totalCues }, (): PCue => ({ enabled: true }));
   }
 
   return cues;

@@ -1,4 +1,4 @@
-import { jsPDF } from "jspdf";
+import { GState, jsPDF } from "jspdf";
 import fontUrl from "#lib/assets/Freesentation-6SemiBold.ttf?url";
 import type { PColor } from "#lib/types/pp.ts";
 import type { PdfPageSource } from "#lib/utils/pp.ts";
@@ -23,11 +23,18 @@ export interface PdfOptions {
   backgroundColor: string;
   /** 슬라이드 그룹, 라벨 표시. */
   showGroupsAndLabels: boolean;
+  /**
+   * 비활성화된 슬라이드 포함. 끄면 PDF에서 빼고, 페이지 번호는 그 슬라이드의
+   * 번호를 건너뛴다.
+   */
+  includeDisabledSlides: boolean;
+  /** 포함한 비활성화된 슬라이드를 흐리게 표시. */
+  dimDisabledSlides: boolean;
+  /** 포함한 비활성화된 슬라이드에 사선 표시. */
+  strikeDisabledSlides: boolean;
   // TODO: 아래 옵션은 아직 PDF 생성에 반영하지 않음.
   /** 재생목록 헤더마다 헤더 페이지 생성. */
   includeHeaderPages: boolean;
-  /** 비활성화된 슬라이드를 흐리게 표시("dim")하거나 생략("skip"). */
-  disabledSlides: "dim" | "skip";
 }
 
 export const DEFAULT_PDF_OPTIONS: PdfOptions = {
@@ -36,7 +43,9 @@ export const DEFAULT_PDF_OPTIONS: PdfOptions = {
   compression: "MEDIUM",
   backgroundColor: "#161616",
   includeHeaderPages: false, // TODO: 구현 전까지 임시로 off 처리
-  disabledSlides: "dim",
+  includeDisabledSlides: true,
+  dimDisabledSlides: true,
+  strikeDisabledSlides: true,
   showGroupsAndLabels: true,
 };
 
@@ -55,6 +64,13 @@ export interface SaveSlidesAsPdfOptions {
   showPresentationName?: boolean;
   /** 슬라이드 위에 슬라이드 그룹, 라벨 표시. */
   showGroupsAndLabels?: boolean;
+  /**
+   * 비활성화된 슬라이드를 흐리게 표시. 비활성화된 슬라이드를 빼려면 pages에서
+   * 미리 걸러서 넘긴다.
+   */
+  dimDisabledSlides?: boolean;
+  /** 비활성화된 슬라이드에 사선 표시. */
+  strikeDisabledSlides?: boolean;
   /** 중간에 취소하기 위한 신호. */
   signal?: AbortSignal;
   /** 페이지 하나를 추가할 때마다 호출된다. */
@@ -97,6 +113,12 @@ const JPEG_QUALITY = 0.9;
  */
 const PNG_SIZE_PERCENT = 80;
 
+/** 비활성화된 슬라이드를 흐리게 할 때 이미지 위에 덮는 흰색 사각형의 불투명도. */
+const DISABLED_DIM_OPACITY = 0.5;
+
+/** 비활성화된 슬라이드의 사선에서 흰색 선 아래에 까는 검은색 선의 불투명도. */
+const DISABLED_STRIKE_SHADOW_OPACITY = 0.5;
+
 /**
  * 슬라이드 정보 배열을 받아 각 슬라이드를 한 페이지씩 담은 PDF를 만들어
  * 저장한다.
@@ -107,6 +129,9 @@ const PNG_SIZE_PERCENT = 80;
  * 텍스트 줄을 옵션에 따라 0~2줄 둔다. 첫 줄은 글자 크기 padding * 8, 높이
  * padding * 10이고, 둘째 줄은 둘 다 첫 줄의 80%이다(줄 높이는 소수점 올림).
  * 페이지 번호는 항상 페이지 오른쪽 위에 첫 줄과 같은 크기로 넣는다.
+ *
+ * 비활성화된 슬라이드는 옵션에 따라 흐리게 표시하거나 사선을 긋는다
+ * (`drawDisabledSlideMarks` 참고).
  *
  * 슬라이드 이미지는 페이지마다 PNG와 JPEG 중 하나로 넣는다. 크기가 비슷하면
  * PNG를 쓴다(`fetchSlideImage` 참고).
@@ -123,6 +148,8 @@ export async function saveSlidesAsPdf(
     backgroundColor = DEFAULT_PDF_OPTIONS.backgroundColor,
     showPresentationName = false,
     showGroupsAndLabels = DEFAULT_PDF_OPTIONS.showGroupsAndLabels,
+    dimDisabledSlides = DEFAULT_PDF_OPTIONS.dimDisabledSlides,
+    strikeDisabledSlides = DEFAULT_PDF_OPTIONS.strikeDisabledSlides,
     signal,
     onProgress,
   } = options;
@@ -211,6 +238,18 @@ export async function saveSlidesAsPdf(
       compression,
     );
 
+    if (!page.enabled && (dimDisabledSlides || strikeDisabledSlides)) {
+      drawDisabledSlideMarks(doc, {
+        x: padding * 2,
+        y: slideTop,
+        width: slideWidth,
+        height: slideHeight,
+        padding,
+        dim: dimDisabledSlides,
+        strike: strikeDisabledSlides,
+      });
+    }
+
     doc.setFontSize(fontSize);
     doc.setTextColor(0, 0, 0);
 
@@ -263,6 +302,79 @@ export async function saveSlidesAsPdf(
 
   signal?.throwIfAborted();
   doc?.save(fileName);
+}
+
+interface DisabledSlideMarks {
+  /** 슬라이드 이미지의 왼쪽 위 좌표와 크기. */
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** 페이지 여백. 사선의 위치와 굵기를 정하는 단위로 쓴다. */
+  padding: number;
+  /** 흐리게 표시. */
+  dim: boolean;
+  /** 사선 표시. */
+  strike: boolean;
+}
+
+/**
+ * 비활성화된 슬라이드 이미지 위에 흐림과 사선을 그린다.
+ *
+ * 흐림은 이미지와 같은 크기의 반투명 흰색 사각형을 덮어서 표현한다. 이미지
+ * 자체를 반투명하게 그리면 투명 영역이 대부분인 슬라이드는 비활성 여부를
+ * 알아보기 어렵기 때문이다. 사선은 흐림보다 나중에 그려서 흐려지지 않게 한다.
+ *
+ * 사선은 이미지 왼쪽 위에서 오른쪽 아래로(\) 긋고, 양 끝은 이미지 모서리에서
+ * 가로·세로 각각 padding * 4만큼 안쪽에 둔다. 반투명 검은색 선(굵기
+ * padding * 3)을 먼저 긋고 그 위에 흰색 선(굵기 padding)을 긋는다.
+ */
+function drawDisabledSlideMarks(
+  doc: jsPDF,
+  { x, y, width, height, padding, dim, strike }: DisabledSlideMarks,
+): void {
+  // 투명도와 선 모양이 페이지 번호 등 뒤에 그리는 내용에 남지 않도록,
+  // 그래픽 상태를 저장했다가 되돌린다.
+  doc.saveGraphicsState();
+
+  if (dim) {
+    doc.setGState(new GState({ opacity: DISABLED_DIM_OPACITY }));
+    doc.setFillColor(255, 255, 255);
+    doc.rect(x, y, width, height, "F");
+  }
+
+  if (strike) {
+    const inset = padding * 4;
+    const startX = x + inset;
+    const startY = y + inset;
+    const endX = x + width - inset;
+    const endY = y + height - inset;
+
+    doc.setLineCap("round");
+
+    doc.setGState(
+      new GState({
+        opacity: 1,
+        "stroke-opacity": DISABLED_STRIKE_SHADOW_OPACITY,
+      }),
+    );
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(padding * 3);
+    doc.line(startX, startY, endX, endY);
+
+    doc.setGState(new GState({ opacity: 1, "stroke-opacity": 1 }));
+    doc.setDrawColor(255, 255, 255);
+    doc.setLineWidth(padding);
+    doc.line(startX, startY, endX, endY);
+  }
+
+  doc.restoreGraphicsState();
+
+  // restoreGraphicsState는 jsPDF가 기억하는 선 끝 모양까지 되돌리지는 않는다.
+  // 그대로 두면 다음 페이지가 round로 시작하므로 기본값(butt)으로 되돌린다.
+  if (strike) {
+    doc.setLineCap("butt");
+  }
 }
 
 /** "[그룹] 라벨" 형태로 합친다. 비어 있는 쪽은 생략한다. */
