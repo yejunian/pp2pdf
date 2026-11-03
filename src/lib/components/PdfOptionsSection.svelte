@@ -11,7 +11,6 @@
   import { Progress } from "#lib/components/ui/progress/index.ts";
   import * as Select from "#lib/components/ui/select/index.ts";
   import { Spinner } from "#lib/components/ui/spinner/index.ts";
-  import * as ToggleGroup from "#lib/components/ui/toggle-group/index.ts";
   import type { GenerationState } from "#lib/types/ui.ts";
   import type { PdfCompression, PdfOptions } from "#lib/utils/pdf.ts";
   import type { PSelection } from "#lib/utils/pp.ts";
@@ -63,6 +62,25 @@
       case "rendering":
         return `PDF 생성 중… (${generation.done}/${generation.total})`;
     }
+  });
+
+  const disabledSlidesDescription = $derived.by(() => {
+    const { includeDisabledSlides, dimDisabledSlides, strikeDisabledSlides } =
+      options;
+
+    if (!includeDisabledSlides) {
+      return "비활성화된 슬라이드를 생략합니다.";
+    }
+    if (dimDisabledSlides && strikeDisabledSlides) {
+      return "비활성화된 슬라이드를 사선과 함께 흐리게 표시합니다.";
+    }
+    if (dimDisabledSlides) {
+      return "비활성화된 슬라이드를 흐리게 표시합니다.";
+    }
+    if (strikeDisabledSlides) {
+      return "비활성화된 슬라이드에 사선을 표시합니다.";
+    }
+    return "비활성화된 슬라이드를 다른 슬라이드와 동일하게 표시합니다.";
   });
 </script>
 
@@ -178,30 +196,56 @@
           </Field.Label>
         </Field.Field>
 
-        <!-- TODO: 구현 전까지 임시로 disabled 처리 -->
-        <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-          <span id="pdf-disabled-slides" class="line-through">
-            비활성화된 슬라이드 처리 방법:
-          </span>
-          <ToggleGroup.Root
-            type="single"
-            variant="outline"
-            size="sm"
-            aria-labelledby="pdf-disabled-slides"
-            disabled={true}
-            bind:value={
-              () => options.disabledSlides,
-              (value) => {
-                // 선택한 항목을 다시 눌러 값이 비면 이전 선택을 유지한다.
-                if (value === "dim" || value === "skip") {
-                  options.disabledSlides = value;
-                }
-              }
-            }
+        <Field.Field orientation="horizontal">
+          <Checkbox
+            id="pdf-disabled-include"
+            aria-describedby="pdf-disabled-description"
+            disabled={generating}
+            bind:checked={options.includeDisabledSlides}
+          />
+          <Field.Label for="pdf-disabled-include" class="font-normal">
+            비활성화된 슬라이드 포함
+          </Field.Label>
+        </Field.Field>
+
+        <!--
+          하위 항목은 체크박스 폭(size-4)과 간격(gap-2)만큼 들여 써서 상위 레이블과
+          맞춘다. 상위 Field.Field 안에 넣으면 하위 체크박스가 비활성화될 때 상위
+          체크박스도 함께 흐려지므로 형제로 둔다. 상위를 끄면 하위 항목의 체크
+          상태는 그대로 두고 조작만 막는다.
+        -->
+        <div class="flex flex-col gap-3 pl-6">
+          <Field.Field
+            orientation="horizontal"
+            data-disabled={!options.includeDisabledSlides}
           >
-            <ToggleGroup.Item value="dim">흐리게 표시</ToggleGroup.Item>
-            <ToggleGroup.Item value="skip">생략</ToggleGroup.Item>
-          </ToggleGroup.Root>
+            <Checkbox
+              id="pdf-disabled-dim"
+              disabled={generating || !options.includeDisabledSlides}
+              bind:checked={options.dimDisabledSlides}
+            />
+            <Field.Label for="pdf-disabled-dim" class="font-normal">
+              흐리게
+            </Field.Label>
+          </Field.Field>
+
+          <Field.Field
+            orientation="horizontal"
+            data-disabled={!options.includeDisabledSlides}
+          >
+            <Checkbox
+              id="pdf-disabled-strike"
+              disabled={generating || !options.includeDisabledSlides}
+              bind:checked={options.strikeDisabledSlides}
+            />
+            <Field.Label for="pdf-disabled-strike" class="font-normal">
+              사선 표시
+            </Field.Label>
+          </Field.Field>
+
+          <Field.Description id="pdf-disabled-description">
+            {disabledSlidesDescription}
+          </Field.Description>
         </div>
       </Field.Set>
     </Field.Set>
