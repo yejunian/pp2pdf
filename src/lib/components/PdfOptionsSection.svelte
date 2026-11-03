@@ -4,13 +4,13 @@
   import InfoIcon from "@lucide/svelte/icons/info";
   import XIcon from "@lucide/svelte/icons/x";
   import { Button } from "#lib/components/ui/button/index.ts";
+  import { Checkbox } from "#lib/components/ui/checkbox/index.ts";
   import * as Field from "#lib/components/ui/field/index.ts";
   import { Input } from "#lib/components/ui/input/index.ts";
   import * as Marker from "#lib/components/ui/marker/index.ts";
   import { Progress } from "#lib/components/ui/progress/index.ts";
   import * as Select from "#lib/components/ui/select/index.ts";
   import { Spinner } from "#lib/components/ui/spinner/index.ts";
-  import { Switch } from "#lib/components/ui/switch/index.ts";
   import * as ToggleGroup from "#lib/components/ui/toggle-group/index.ts";
   import type { GenerationState } from "#lib/types/ui.ts";
   import type { PdfCompression, PdfOptions } from "#lib/utils/pdf.ts";
@@ -157,7 +157,7 @@
 
         <!-- TODO: 구현 전까지 임시로 disabled 처리 -->
         <Field.Field orientation="horizontal">
-          <Switch
+          <Checkbox
             id="pdf-header-pages"
             disabled={true || selectionType === "presentation"}
             bind:checked={options.includeHeaderPages}
@@ -168,7 +168,7 @@
         </Field.Field>
 
         <Field.Field orientation="horizontal">
-          <Switch
+          <Checkbox
             id="pdf-groups-labels"
             disabled={generating}
             bind:checked={options.showGroupsAndLabels}
